@@ -1,5 +1,8 @@
 import Terminal from "./terminal";
 import CopyChip from "./copychip";
+import Nav from "./nav";
+import Footer from "./footer";
+import Motion from "./motion";
 
 const GUIDE_STEPS = [
   ["Open cPanel → SSH Access and generate a new SSH key with a passphrase", "cPanel UI", false],
@@ -111,24 +114,8 @@ const FAQ = [
 export default function Page() {
   return (
     <>
-      <nav>
-        <div className="nav-in">
-          <a className="brand" href="#top">
-            <span className="mark">&gt;_</span>gitship
-          </a>
-          <div className="nav-links">
-            <a href="#oldway">The old way</a>
-            <a href="#mapping">What gitship does</a>
-            <a href="#setup">Setup</a>
-            <a href="#after">After setup</a>
-            <a href="#commands">Commands</a>
-            <a href="#faq">FAQ</a>
-            <a className="gh" href="https://github.com/rezwanvaiya2-0/gitship" target="_blank" rel="noopener">
-              GitHub
-            </a>
-          </div>
-        </div>
-      </nav>
+      <Nav />
+      <Motion />
 
       <header className="hero" id="top">
         <div className="wrap hero-grid">
@@ -151,7 +138,7 @@ export default function Page() {
       </header>
 
       <section className="oldway" id="oldway">
-        <div className="wrap">
+        <div className="wrap" data-reveal>
           <div className="sec-head">
             <h2>The official guide asks a beginner for all of this</h2>
             <p>Every line below is a real step from cPanel&apos;s own Git documentation for private repositories. Each one is a place to get stuck.</p>
@@ -185,7 +172,7 @@ export default function Page() {
       </div>
 
       <section id="mapping">
-        <div className="wrap">
+        <div className="wrap" data-reveal>
           <div className="sec-head">
             <h2>Manual step, automated</h2>
             <p>What the cPanel guide makes you do by hand, and what gitship does instead.</p>
@@ -210,7 +197,7 @@ export default function Page() {
       </section>
 
       <section id="setup">
-        <div className="wrap">
+        <div className="wrap" data-reveal>
           <div className="sec-head">
             <h2>What <span className="mono">./repo start</span> actually runs</h2>
             <p>Six checks and steps, each one verified before the next begins.</p>
@@ -231,7 +218,7 @@ export default function Page() {
       </section>
 
       <section className="after" id="after">
-        <div className="wrap">
+        <div className="wrap" data-reveal>
           <div className="sec-head">
             <h2>After setup, it&apos;s just… cPanel</h2>
             <p>gitship doesn&apos;t replace anything. The repo lands in the Git Version Control page you already know, and publishing stays one click.</p>
@@ -269,7 +256,7 @@ export default function Page() {
       </section>
 
       <section id="commands">
-        <div className="wrap">
+        <div className="wrap" data-reveal>
           <div className="sec-head">
             <h2>Commands</h2>
             <p>Installed to <span className="mono">~/bin/repo</span> during setup — works from any folder in cPanel Terminal.</p>
@@ -286,7 +273,7 @@ export default function Page() {
       </section>
 
       <section id="security">
-        <div className="wrap">
+        <div className="wrap" data-reveal>
           <div className="sec-head"><h2>Security, in plain terms</h2></div>
           <div className="sec-grid">
             {SECURITY.map(([h, p], i) => (
@@ -300,7 +287,7 @@ export default function Page() {
       </section>
 
       <section id="faq">
-        <div className="wrap">
+        <div className="wrap" data-reveal>
           <div className="sec-head"><h2>Questions beginners actually ask</h2></div>
           {FAQ.map(([q, a], i) => (
             <details key={i} open={i === 0}>
@@ -312,19 +299,14 @@ export default function Page() {
       </section>
 
       <div className="cta">
-        <div className="wrap">
+        <div className="wrap" data-reveal>
           <h2>Your private repo is one command away</h2>
           <p>Run this in cPanel → Terminal, answer two questions, paste a temporary token.</p>
           <CopyChip />
         </div>
       </div>
 
-      <footer>
-        <div className="wrap">
-          <span>gitship v2.0.0 — private GitHub repos on cPanel, without the dance.</span>
-          <a href="https://github.com/rezwanvaiya2-0/gitship" target="_blank" rel="noopener">github.com/rezwanvaiya2-0/gitship</a>
-        </div>
-      </footer>
+      <Footer />
     </>
   );
 }

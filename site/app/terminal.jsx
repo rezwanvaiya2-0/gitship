@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 
 const CMD_LINE = "./repo start";
+const PROMPT = "[you@hosting-server ~]$";
 const LINES = [
   ["step", "== 1/6  Checking your server (as your cPanel user — no root) =="],
   ["ok", "[ok] git: git version 2.36.1"],
@@ -32,6 +33,14 @@ function esc(s) {
 
 function line(pair) {
   return `<span class="${pair[0]}">${esc(pair[1])}</span>`;
+}
+
+function Prompt({ children }) {
+  return (
+    <div>
+      <span className="prompt">{PROMPT}</span> {children}
+    </div>
+  );
 }
 
 export default function Terminal() {
@@ -74,19 +83,24 @@ export default function Terminal() {
   }, [phase]);
 
   return (
-    <div className="term" aria-label="Example of repo start output">
+    <div className="term" aria-label="Example of running repo start inside the cPanel Terminal">
       <div className="term-bar">
         <i></i><i></i><i></i>
-        <span className="t">cpanel-terminal — repo start</span>
+        <span className="t">cPanel » Advanced » Terminal</span>
       </div>
       <div className="term-body" id="term-body">
-        <div>
+        <Prompt>
           <span className="cmd">{typed}</span>
           {phase === "typing" && <span className="caret"></span>}
-        </div>
+        </Prompt>
         {LINES.slice(0, shown).map((pair, idx) => (
           <div key={idx} dangerouslySetInnerHTML={{ __html: line(pair) }} />
         ))}
+        {phase === "done" && (
+          <Prompt>
+            <span className="caret"></span>
+          </Prompt>
+        )}
       </div>
     </div>
   );
