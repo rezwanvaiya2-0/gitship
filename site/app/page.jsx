@@ -17,23 +17,37 @@ const GUIDE_STEPS = [
   ["Debug it yourself when any step fails — cryptic errors included", "you're on your own", true],
 ];
 
-const DIFF = [
-  { t: "hunk", text: "@@ guide-to-git: private repos :: key & access @@" },
-  { t: "minus", o: 12, text: "Generate an SSH key in cPanel → SSH Access; set passphrase and permissions" },
-  { t: "plus", n: 7, text: "Key generated through cPanel's own key system (SSH::genkey) — shows up in Manage SSH Keys" },
-  { t: "minus", o: 13, text: "Copy the public key into GitHub → Deploy keys; pick the access level" },
-  { t: "plus", n: 8, text: "Deploy key added by the GitHub API — read-only, scoped to your one repo" },
-  { t: "hunk", text: "@@ guide-to-git: trust :: github.com @@" },
-  { t: "minus", o: 14, text: "Confirm github.com's host key when the scary trust prompt appears" },
-  { t: "plus", n: 9, text: "Host key pre-trusted from GitHub's official list — no prompts, for you or for cPanel" },
-  { t: "hunk", text: "@@ guide-to-git: deploy :: clone & registration @@" },
-  { t: "minus", o: 15, text: "Copy the clone URL; fill the Create form with path, name and URL" },
-  { t: "plus", n: 10, text: "Repo cloned to the folder you pick — branch pre-filled from GitHub" },
-  { t: "minus", o: 16, text: "Hope the repo shows up correctly in Git Version Control" },
-  { t: "plus", n: 11, text: "Registered via cPanel's UAPI, then verified by re-listing your repositories" },
-  { t: "hunk", text: "@@ guide-to-git: support @@ when things break" },
-  { t: "minus", o: 17, text: "Decode cryptic SSH errors when something fails" },
-  { t: "plus", n: 12, text: "Every failure names the problem and ends with the exact command that fixes it" },
+const MAPPING = [
+  {
+    manual: "Generate an SSH key in cPanel → SSH Access, set passphrase and permissions",
+    title: "Key created through cPanel's own key system",
+    body: "It is generated via cPanel's API (SSH::genkey), so it shows up natively in SSH Access → Manage SSH Keys — with a name you can recognise.",
+  },
+  {
+    manual: "Copy the public key into GitHub → Deploy keys, choose the access level",
+    title: "Deploy key added by the GitHub API",
+    body: "Read-only, scoped to your one repo. Your token is used for a few seconds and never stored on the server.",
+  },
+  {
+    manual: "Confirm github.com's host key when the trust prompt appears",
+    title: "Host key pre-trusted before anything connects",
+    body: "Fetched from GitHub's official key list and written to known_hosts, so no scary prompt ever appears — for you or for cPanel.",
+  },
+  {
+    manual: "Copy the clone URL, fill the Create form: path, name, URL",
+    title: "Repo cloned to the folder you pick",
+    body: "One question, sensible default (~/public_html/your-repo), branch pre-filled from GitHub.",
+  },
+  {
+    manual: "Hope the repo shows up correctly in Git Version Control",
+    title: "Registered via cPanel's UAPI, then verified",
+    body: "The tool re-lists cPanel's repositories and only reports success when yours is really there.",
+  },
+  {
+    manual: "Decode cryptic SSH errors when something fails",
+    title: "Every failure says what to do next",
+    body: "Connection is tested at each step, and errors end with the exact command that fixes them.",
+  },
 ];
 
 const STEPS = [
@@ -160,35 +174,32 @@ export default function Page() {
       <section id="mapping">
         <div className="wrap" data-reveal>
           <div className="sec-head">
-            <h2>The guide, rewritten as a diff</h2>
-            <p>Red is what the official cPanel guide asks you to do by hand. Green is what gitship ships
-              instead. If you have ever read a diff, this is the whole story.</p>
+            <h2>Manual step, automated</h2>
+            <p>The same private-repo guide, before and after gitship runs. Struck through is what you
+              never do by hand again; underneath it is what happens instead.</p>
           </div>
-          <div className="diff" aria-label="The cPanel guide steps shown as a git diff: red lines removed by gitship, green lines added">
-            <div className="diff-head">
-              <span>commit a1b2c3d · Author: gitship &lt;you@hosting-server&gt; · <span className="stat">−10 by hand, +6 automated</span></span>
-              <span className="msg">automate: the private-repo setup guide</span>
+          <div className="fix-panel" aria-label="The cPanel guide's manual steps, each replaced by what gitship does automatically">
+            <div className="fix-title">
+              <span className="dot"></span><span className="dot"></span><span className="dot"></span>
+              Guide to Git — private repositories, now automated
             </div>
-            <div className="diff-legend">
-              <span className="m">removed = done by hand</span>
-              <span className="a">added = done by gitship</span>
-            </div>
-            {DIFF.map((l, i) =>
-              l.t === "hunk" ? (
-                <div className="dline hunk" key={i}>
-                  <span className="g"></span><span className="g"></span>
-                  <span className="c">{l.text}</span>
+            {MAPPING.map((m, i) => (
+              <div className="fix-row" key={i}>
+                <div className="num">0{i + 1}</div>
+                <div>
+                  <div className="fix-old">
+                    <span className="x">✕</span>
+                    <span className="txt">{m.manual}</span>
+                  </div>
+                  <div className="fix-new">
+                    <span className="chk">✓</span>
+                    <span>
+                      <strong>{m.title}</strong> <span className="body">— {m.body}</span>
+                    </span>
+                  </div>
                 </div>
-              ) : (
-                <div className={"dline " + l.t} key={i}>
-                  <span className="g">{l.o || ""}</span>
-                  <span className="g">{l.n || ""}</span>
-                  <span className="c">
-                    <span className="sign">{l.t === "minus" ? "−" : "+"}</span> {l.text}
-                  </span>
-                </div>
-              )
-            )}
+              </div>
+            ))}
           </div>
         </div>
       </section>
