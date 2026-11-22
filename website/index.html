@@ -1,0 +1,523 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>gitship — one command sets up your private GitHub repo on cPanel</title>
+<meta name="description" content="gitship automates every manual step from the cPanel guide: SSH keys, GitHub deploy keys, host key trust, cloning and Git Version Control registration — one command, no root, 100% cPanel native.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23FF7A3D'/%3E%3Ctext x='16' y='22' font-family='monospace' font-size='16' font-weight='bold' fill='%2310151D' text-anchor='middle'%3E%26gt;_%3C/text%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@600;700;800&family=Public+Sans:wght@400;600&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+/* ---------- tokens ---------- */
+:root{
+  --bg:#10151D;          /* server-room slate */
+  --panel:#171E29;       /* raised panel */
+  --line:#232D3B;        /* hairline */
+  --ink:#E8EDF4;         /* soft white */
+  --muted:#8B98A9;       /* secondary text */
+  --accent:#FF7A3D;      /* cPanel-brand orange, spent sparingly */
+  --accent-ink:#10151D;  /* text on orange */
+  --term:#0B0F15;        /* terminal body */
+  --term-green:#5AD98C;  /* success output only */
+  --term-dim:#64758C;
+  --light-bg:#F4F7FB;    /* cPanel-interface world */
+  --light-panel:#FFFFFF;
+  --light-ink:#1F2A3A;
+  --light-muted:#5B6B7F;
+  --light-line:#DBE3EC;
+  --danger:#E5697A;
+  --radius:14px;
+  --maxw:1120px;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html{scroll-behavior:smooth}
+@media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
+body{background:var(--bg);color:var(--ink);font-family:'Public Sans',system-ui,sans-serif;font-size:16.5px;line-height:1.65;-webkit-font-smoothing:antialiased}
+h1,h2,h3{font-family:'Sora',sans-serif;line-height:1.18;letter-spacing:-.01em}
+a{color:inherit}
+.wrap{max-width:var(--maxw);margin:0 auto;padding:0 24px}
+:focus-visible{outline:2px solid var(--accent);outline-offset:3px;border-radius:4px}
+::selection{background:var(--accent);color:var(--accent-ink)}
+
+/* ---------- nav ---------- */
+nav{position:sticky;top:0;z-index:50;background:rgba(16,21,29,.86);backdrop-filter:blur(10px);border-bottom:1px solid var(--line)}
+.nav-in{max-width:var(--maxw);margin:0 auto;padding:14px 24px;display:flex;align-items:center;gap:28px}
+.brand{display:flex;align-items:center;gap:10px;font-family:'Sora',sans-serif;font-weight:700;font-size:19px;text-decoration:none}
+.brand .mark{width:30px;height:30px;border-radius:8px;background:var(--accent);color:var(--accent-ink);display:grid;place-items:center;font-family:'JetBrains Mono',monospace;font-weight:600;font-size:14px}
+.nav-links{display:flex;gap:22px;margin-left:auto;align-items:center}
+.nav-links a{text-decoration:none;color:var(--muted);font-size:14.5px;font-weight:600}
+.nav-links a:hover{color:var(--ink)}
+.nav-links .gh{color:var(--ink);border:1px solid var(--line);padding:7px 14px;border-radius:9px}
+.nav-links .gh:hover{border-color:var(--accent);color:var(--accent)}
+@media(max-width:880px){.nav-links a:not(.gh){display:none}}
+
+/* ---------- hero ---------- */
+.hero{padding:84px 0 72px;border-bottom:1px solid var(--line);
+  background:radial-gradient(1000px 500px at 78% -10%,rgba(255,122,61,.09),transparent 60%)}
+.hero-grid{display:grid;grid-template-columns:1.05fr .95fr;gap:56px;align-items:center}
+@media(max-width:980px){.hero-grid{grid-template-columns:1fr;gap:40px}}
+.hero h1{font-size:clamp(34px,4.6vw,54px);font-weight:800;margin:0 0 20px}
+.hero .lede{color:var(--muted);font-size:18px;max-width:46ch;margin-bottom:30px}
+.hero .lede strong{color:var(--ink);font-weight:600}
+.chip{display:flex;align-items:center;gap:14px;background:var(--accent);color:var(--accent-ink);
+  border-radius:12px;padding:14px 18px;font-family:'JetBrains Mono',monospace;font-size:14.5px;font-weight:600;
+  max-width:fit-content;box-shadow:0 8px 30px rgba(255,122,61,.22)}
+.chip button{background:rgba(16,21,29,.18);border:0;color:var(--accent-ink);font:600 12.5px 'Public Sans',sans-serif;
+  padding:6px 11px;border-radius:7px;cursor:pointer}
+.chip button:hover{background:rgba(16,21,29,.3)}
+.chip .copied{background:var(--accent-ink);color:var(--accent)}
+@media(max-width:640px){.chip{flex-wrap:wrap}.chip span{overflow-wrap:anywhere}}
+.hero-meta{margin-top:22px;color:var(--muted);font-size:14px}
+.hero-meta span{color:var(--ink);font-weight:600}
+
+/* ---------- terminal ---------- */
+.term{background:var(--term);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;
+  box-shadow:0 24px 70px rgba(0,0,0,.5)}
+.term-bar{display:flex;gap:7px;padding:12px 14px;border-bottom:1px solid var(--line);background:rgba(255,255,255,.02)}
+.term-bar i{width:11px;height:11px;border-radius:50%;background:var(--line)}
+.term-bar .t{margin-left:8px;color:var(--term-dim);font:400 12.5px 'JetBrains Mono',monospace}
+.term-body{padding:18px 18px 20px;font:400 12.8px/1.75 'JetBrains Mono',monospace;color:var(--ink);
+  height:430px;overflow:auto;white-space:pre-wrap;word-break:break-word}
+@media(max-width:980px){.term-body{height:340px}}
+.term-body .cmd{color:var(--ink);font-weight:600}
+.term-body .cmd::before{content:'$ ';color:var(--accent)}
+.term-body .step{color:var(--term-dim)}
+.term-body .ok{color:var(--term-green)}
+.term-body .q{color:#E3B76B}
+.term-body .hint{color:var(--term-dim);font-style:italic}
+.caret{display:inline-block;width:8px;height:16px;background:var(--accent);vertical-align:-3px;animation:blink 1s steps(1) infinite}
+@keyframes blink{50%{opacity:0}}
+@media (prefers-reduced-motion:reduce){.caret{animation:none}}
+
+/* ---------- sections ---------- */
+section{padding:84px 0}
+.sec-head{max-width:60ch;margin-bottom:44px}
+.sec-head h2{font-size:clamp(26px,3vw,36px);font-weight:700;margin-bottom:14px}
+.sec-head p{color:var(--muted);font-size:17px}
+
+/* old way — light panel */
+.oldway{background:var(--light-bg);color:var(--light-ink)}
+.oldway .sec-head p{color:var(--light-muted)}
+.guide-panel{background:var(--light-panel);border:1px solid var(--light-line);border-radius:var(--radius);
+  overflow:hidden;box-shadow:0 12px 40px rgba(31,42,58,.08)}
+.guide-title{padding:14px 22px;border-bottom:1px solid var(--light-line);display:flex;align-items:center;gap:10px;
+  color:var(--light-muted);font-size:13.5px;font-weight:600}
+.guide-title .dot{width:8px;height:8px;border-radius:50%;background:#C6D2DF}
+.guide-list{padding:10px 0}
+.guide-list ol{list-style:none;counter-reset:step}
+.guide-list li{counter-increment:step;display:flex;gap:16px;padding:13px 22px;border-bottom:1px solid var(--light-line);align-items:baseline}
+.guide-list li:last-child{border-bottom:0}
+.guide-list li::before{content:counter(step,decimal-leading-zero);font:600 12.5px 'JetBrains Mono',monospace;color:#B0BECB;min-width:26px}
+.guide-list li .txt{flex:1;font-size:15.5px}
+.guide-list li .cost{color:var(--light-muted);font-size:13px;white-space:nowrap}
+.guide-list li.miss .cost{color:var(--danger);font-weight:600}
+.oldway-note{margin-top:26px;color:var(--light-muted);font-size:15px;max-width:62ch}
+
+/* divider */
+.divider{padding:70px 0 60px;text-align:center;border-bottom:1px solid var(--line)}
+.divider h2{font-size:clamp(26px,3.4vw,40px);font-weight:800}
+.divider h2 em{font-style:normal;color:var(--accent)}
+.divider p{color:var(--muted);margin-top:12px;font-size:16.5px}
+
+/* ledger mapping */
+.ledger{border:1px solid var(--line);border-radius:var(--radius);overflow:hidden}
+.row{display:grid;grid-template-columns:1fr 1fr;border-bottom:1px solid var(--line)}
+.row:last-child{border-bottom:0}
+.row .cell{padding:20px 24px}
+.row .cell:first-child{border-right:1px solid var(--line)}
+@media(max-width:760px){.row{grid-template-columns:1fr}.row .cell:first-child{border-right:0;border-bottom:1px dashed var(--line)}}
+.ledger-head .cell{font:600 13px 'Sora',sans-serif;color:var(--muted);background:rgba(255,255,255,.02)}
+.ledger .manual{color:var(--muted)}
+.ledger .auto strong{display:block;font-family:'Sora',sans-serif;font-size:15.5px;margin-bottom:4px}
+.ledger .auto{font-size:14.5px;color:var(--muted)}
+.ledger .auto strong{color:var(--ink)}
+.ledger .manual .tag,.ledger .auto .tag{display:inline-block;font:600 11px 'JetBrains Mono',monospace;margin-bottom:8px;
+  padding:3px 9px;border-radius:99px;letter-spacing:.02em}
+.ledger .manual .tag{background:rgba(229,105,122,.12);color:var(--danger)}
+.ledger .auto .tag{background:rgba(90,217,140,.1);color:var(--term-green)}
+
+/* wizard steps */
+.steps{display:grid;gap:0;border:1px solid var(--line);border-radius:var(--radius);overflow:hidden}
+.step-row{display:grid;grid-template-columns:88px 1fr;border-bottom:1px solid var(--line)}
+.step-row:last-child{border-bottom:0}
+.step-row .n{display:grid;place-items:center;font:700 26px 'Sora',sans-serif;color:var(--accent);border-right:1px solid var(--line);
+  background:rgba(255,122,61,.05)}
+.step-row .b{padding:22px 26px}
+.step-row h3{font-size:17px;margin-bottom:6px}
+.step-row p{color:var(--muted);font-size:15px;max-width:64ch}
+.step-row .api{font:400 12.5px 'JetBrains Mono',monospace;color:var(--term-dim)}
+
+/* after setup — light cPanel world */
+.after{background:var(--light-bg);color:var(--light-ink)}
+.after .sec-head p{color:var(--light-muted)}
+.after-grid{display:grid;grid-template-columns:1fr 1fr;gap:44px;align-items:center}
+@media(max-width:980px){.after-grid{grid-template-columns:1fr}}
+.cp-mock{background:var(--light-panel);border:1px solid var(--light-line);border-radius:var(--radius);overflow:hidden;
+  box-shadow:0 16px 50px rgba(31,42,58,.12);font-size:13.5px}
+.cp-top{background:#1F2A3A;color:#fff;padding:12px 18px;display:flex;align-items:center;gap:10px;font-weight:600}
+.cp-top .logo{color:#FF7A3D;font-family:'Sora',sans-serif}
+.cp-body{padding:20px 22px}
+.cp-crumb{color:var(--light-muted);font-size:12px;margin-bottom:14px}
+.cp-row{display:flex;justify-content:space-between;gap:14px;padding:11px 0;border-bottom:1px solid var(--light-line)}
+.cp-row .k{color:var(--light-muted)}
+.cp-row .v{font-weight:600;text-align:right}
+.cp-btn{margin-top:18px;background:#2FA84F;color:#fff;border:0;border-radius:8px;padding:11px 18px;
+  font:600 14px 'Public Sans',sans-serif;width:100%;cursor:default}
+.cp-btn small{display:block;font-weight:400;font-size:11.5px;opacity:.85;margin-top:3px}
+.after-points{list-style:none;display:grid;gap:18px}
+.after-points li{padding-left:26px;position:relative;color:var(--light-muted);font-size:15.5px}
+.after-points li strong{color:var(--light-ink);display:block;font-size:16px;margin-bottom:2px}
+.after-points li::before{content:'';position:absolute;left:0;top:9px;width:12px;height:12px;border-radius:3px;background:var(--accent)}
+.after-fig{margin-top:26px;font-size:12.5px;color:var(--light-muted)}
+
+/* commands */
+.cmd-table{border:1px solid var(--line);border-radius:var(--radius);overflow:hidden}
+.cmd-row{display:grid;grid-template-columns:220px 1fr;border-bottom:1px solid var(--line)}
+.cmd-row:last-child{border-bottom:0}
+.cmd-row .c{padding:15px 22px;font:600 14px 'JetBrains Mono',monospace;color:var(--accent)}
+.cmd-row .d{padding:15px 22px;color:var(--muted);font-size:14.5px;border-left:1px solid var(--line)}
+@media(max-width:640px){.cmd-row{grid-template-columns:1fr}.cmd-row .d{border-left:0;border-top:1px dashed var(--line)}}
+
+/* security + faq */
+.sec-grid{display:grid;grid-template-columns:1fr 1fr;gap:0;border:1px solid var(--line);border-radius:var(--radius);overflow:hidden}
+@media(max-width:760px){.sec-grid{grid-template-columns:1fr}}
+.sec-item{padding:24px 26px;border-bottom:1px solid var(--line)}
+.sec-item:nth-child(odd){border-right:1px solid var(--line)}
+.sec-item:nth-last-child(-n+2){border-bottom:0}
+@media(max-width:760px){.sec-item:nth-child(odd){border-right:0}.sec-item:nth-last-child(-n+2){border-bottom:1px solid var(--line)}.sec-item:last-child{border-bottom:0}}
+.sec-item h3{font-size:16px;margin-bottom:7px}
+.sec-item p{color:var(--muted);font-size:14.5px}
+details{border-bottom:1px solid var(--line);padding:2px 0}
+details summary{cursor:pointer;padding:18px 4px;font-family:'Sora',sans-serif;font-weight:600;font-size:16px;list-style:none;display:flex;justify-content:space-between;gap:16px}
+details summary::-webkit-details-marker{display:none}
+details summary::after{content:'+';color:var(--accent);font-size:20px;line-height:1}
+details[open] summary::after{content:'–'}
+details p{color:var(--muted);padding:0 4px 20px;max-width:72ch}
+
+/* cta + footer */
+.cta{border-top:1px solid var(--line);text-align:center;padding:90px 0}
+.cta h2{font-size:clamp(28px,3.6vw,44px);font-weight:800;margin-bottom:14px}
+.cta p{color:var(--muted);margin-bottom:34px}
+.cta .chip{margin:0 auto}
+footer{border-top:1px solid var(--line);padding:34px 0;color:var(--muted);font-size:14px}
+footer .wrap{display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap}
+footer a{color:var(--ink);text-decoration:none;font-weight:600}
+footer a:hover{color:var(--accent)}
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="nav-in">
+    <a class="brand" href="#top"><span class="mark">&gt;_</span>gitship</a>
+    <div class="nav-links">
+      <a href="#oldway">The old way</a>
+      <a href="#mapping">What gitship does</a>
+      <a href="#setup">Setup</a>
+      <a href="#after">After setup</a>
+      <a href="#commands">Commands</a>
+      <a href="#faq">FAQ</a>
+      <a class="gh" href="https://github.com/rezwanvaiya2-0/gitship" target="_blank" rel="noopener">GitHub</a>
+    </div>
+  </div>
+</nav>
+
+<header class="hero" id="top">
+  <div class="wrap hero-grid">
+    <div>
+      <h1>One command puts your private GitHub repo on cPanel.</h1>
+      <p class="lede">The official cPanel guide walks you through <strong>ten manual steps</strong> across two
+        websites — SSH keys, deploy keys, host key prompts, clone forms. <strong>gitship</strong> does the
+        entire dance for you from cPanel Terminal, then hands the repo to cPanel's own Git Version Control.</p>
+      <div class="chip" id="install-chip">
+        <span>git clone https://github.com/rezwanvaiya2-0/gitship.git &amp;&amp; cd gitship &amp;&amp; ./repo start</span>
+        <button type="button" id="copy-btn" aria-label="Copy install command">Copy</button>
+      </div>
+      <p class="hero-meta"><span>No root.</span> <span>No paid plan.</span> <span>No keys to manage.</span>
+        Works on any cPanel shared host with Terminal access.</p>
+    </div>
+    <div class="term" aria-label="Example of repo start output">
+      <div class="term-bar"><i></i><i></i><i></i><span class="t">cpanel-terminal — repo start</span></div>
+      <div class="term-body" id="term-body"></div>
+    </div>
+  </div>
+</header>
+
+<section class="oldway" id="oldway">
+  <div class="wrap">
+    <div class="sec-head">
+      <h2>The official guide asks a beginner for all of this</h2>
+      <p>Every line below is a real step from cPanel's own Git documentation for private repositories.
+        Each one is a place to get stuck.</p>
+    </div>
+    <div class="guide-panel">
+      <div class="guide-title"><span class="dot"></span><span class="dot"></span><span class="dot"></span>
+        Guide to Git — private repositories, the manual route</div>
+      <div class="guide-list">
+        <ol>
+          <li><span class="txt">Open cPanel → SSH Access and generate a new SSH key with a passphrase</span><span class="cost">cPanel UI</span></li>
+          <li><span class="txt">Set the right key permissions, or the key silently fails</span><span class="cost">cPanel UI</span></li>
+          <li><span class="txt">Manage SSH Keys → view and copy the public key</span><span class="cost">cPanel UI</span></li>
+          <li><span class="txt">Download and convert the private key if you ever use PuTTY</span><span class="cost">cPanel UI</span></li>
+          <li><span class="txt">Open GitHub → repository → Settings → Deploy keys</span><span class="cost">GitHub</span></li>
+          <li><span class="txt">Paste the public key, save it with the right access level</span><span class="cost">GitHub</span></li>
+          <li><span class="txt">Copy the SSH clone URL from GitHub's Code button</span><span class="cost">GitHub</span></li>
+          <li><span class="txt">cPanel → Git Version Control → Create → paste URL, set path and name</span><span class="cost">cPanel UI</span></li>
+          <li><span class="txt">Confirm github.com's host key when the scary prompt appears</span><span class="cost">cPanel UI</span></li>
+          <li class="miss"><span class="txt">Debug it yourself when any step fails — cryptic errors included</span><span class="cost">you're on your own</span></li>
+        </ol>
+      </div>
+    </div>
+    <p class="oldway-note">Most of these steps only exist to move one small key from one place to another.
+      That handoff is exactly what gitship automates.</p>
+  </div>
+</section>
+
+<div class="divider wrap">
+  <h2>gitship does <em>the whole dance</em> in one command</h2>
+  <p>Same result as the guide — a private repo, fully managed in cPanel → Git Version Control. Ten manual steps become two questions and one paste.</p>
+</div>
+
+<section id="mapping">
+  <div class="wrap">
+    <div class="sec-head">
+      <h2>Manual step, automated</h2>
+      <p>What the cPanel guide makes you do by hand, and what gitship does instead.</p>
+    </div>
+    <div class="ledger">
+      <div class="row ledger-head">
+        <div class="cell">The cPanel guide says</div>
+        <div class="cell">gitship does</div>
+      </div>
+      <div class="row">
+        <div class="cell manual"><span class="tag">manual</span>Generate an SSH key in cPanel → SSH Access, set passphrase and permissions</div>
+        <div class="cell auto"><span class="tag">automated</span><strong>Key created through cPanel's own key system</strong>It is generated via cPanel's API (SSH::genkey), so it shows up natively in SSH Access → Manage SSH Keys — with a name you can recognise.</div>
+      </div>
+      <div class="row">
+        <div class="cell manual"><span class="tag">manual</span>Copy the public key into GitHub → Deploy keys, choose the access level</div>
+        <div class="cell auto"><span class="tag">automated</span><strong>Deploy key added by the GitHub API</strong>Read-only, scoped to your one repo. Your token is used for a few seconds and never stored on the server.</div>
+      </div>
+      <div class="row">
+        <div class="cell manual"><span class="tag">manual</span>Confirm github.com's host key when the trust prompt appears</div>
+        <div class="cell auto"><span class="tag">automated</span><strong>Host key pre-trusted before anything connects</strong>Fetched from GitHub's official key list and written to known_hosts, so no scary prompt ever appears — for you or for cPanel.</div>
+      </div>
+      <div class="row">
+        <div class="cell manual"><span class="tag">manual</span>Copy the clone URL, fill the Create form: path, name, URL</div>
+        <div class="cell auto"><span class="tag">automated</span><strong>Repo cloned to the folder you pick</strong>One question, sensible default (<span style="font-family:'JetBrains Mono',monospace;font-size:13px">~/public_html/your-repo</span>), branch pre-filled from GitHub.</div>
+      </div>
+      <div class="row">
+        <div class="cell manual"><span class="tag">manual</span>Hope the repo shows up correctly in Git Version Control</div>
+        <div class="cell auto"><span class="tag">automated</span><strong>Registered via cPanel's UAPI, then verified</strong>The tool re-lists cPanel's repositories and only reports success when yours is really there.</div>
+      </div>
+      <div class="row">
+        <div class="cell manual"><span class="tag">manual</span>Decode cryptic SSH errors when something fails</div>
+        <div class="cell auto"><span class="tag">automated</span><strong>Every failure says what to do next</strong>Connection is tested at each step, and errors end with the exact command that fixes them.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="setup">
+  <div class="wrap">
+    <div class="sec-head">
+      <h2>What <span style="font-family:'JetBrains Mono',monospace">./repo start</span> actually runs</h2>
+      <p>Six checks and steps, each one verified before the next begins.</p>
+    </div>
+    <div class="steps">
+      <div class="step-row"><div class="n">1</div><div class="b">
+        <h3>Check the server</h3><p>git, curl, PHP and cPanel's own command APIs are detected first. No root is used at any point — everything lives in your home folder.</p>
+        <p class="api">git --version · command -v uapi · /usr/local/cpanel/bin/cpapi2</p></div></div>
+      <div class="step-row"><div class="n">2</div><div class="b">
+        <h3>Verify your token and the repo — before touching anything</h3><p>A fine-grained GitHub token (Administration: write, Contents: read) is checked against the GitHub API. Wrong token, missing repo or missing permission? You get a plain-language message before any change is made.</p>
+        <p class="api">GET api.github.com/repos/owner/repo</p></div></div>
+      <div class="step-row"><div class="n">3</div><div class="b">
+        <h3>Create the SSH deploy key through cPanel</h3><p>The key pair is generated via cPanel's API so it appears in SSH Access → Manage SSH Keys. The public half is added to GitHub as a read-only deploy key, and the SSH login is tested against GitHub.</p>
+        <p class="api">cpapi2 SSH genkey · POST /repos/.../keys · ssh -T git@github.com</p></div></div>
+      <div class="step-row"><div class="n">4</div><div class="b">
+        <h3>Pick where the site lives</h3><p>Default is <span style="font-family:'JetBrains Mono',monospace;font-size:13px">~/public_html/your-repo</span>. Your branch is pre-filled from GitHub's default branch — just press Enter.</p></div></div>
+      <div class="step-row"><div class="n">5</div><div class="b">
+        <h3>Clone the private repo</h3><p>Cloned over SSH with your new key. Your first project gets the standard <span style="font-family:'JetBrains Mono',monospace;font-size:13px">git@github.com:owner/repo.git</span> remote — nothing tool-specific in the URL.</p></div></div>
+      <div class="step-row"><div class="n">6</div><div class="b">
+        <h3>Register it in cPanel → Git Version Control</h3><p>Called through cPanel's own UAPI, then confirmed by re-listing your repositories. The repo now behaves exactly like one you created by hand in the cPanel UI.</p>
+        <p class="api">uapi VersionControl create · uapi VersionControl retrieve</p></div></div>
+    </div>
+  </div>
+</section>
+
+<section class="after" id="after">
+  <div class="wrap">
+    <div class="sec-head">
+      <h2>After setup, it's just… cPanel</h2>
+      <p>gitship doesn't replace anything. The repo lands in the Git Version Control page you already know, and publishing stays one click.</p>
+    </div>
+    <div class="after-grid">
+      <div>
+        <div class="cp-mock" role="img" aria-label="Illustration of the cPanel Git Version Control manage page showing the repository, branch and the Update from Remote button">
+          <div class="cp-top"><span class="logo">cPanel</span><span style="font-weight:400;font-size:12.5px;opacity:.8">Home » Files » Git Version Control</span></div>
+          <div class="cp-body">
+            <div class="cp-crumb">Manage » secret-app</div>
+            <div class="cp-row"><span class="k">Repository Name</span><span class="v">secret-app</span></div>
+            <div class="cp-row"><span class="k">Repository Path</span><span class="v">/home/you/public_html/secret-app</span></div>
+            <div class="cp-row"><span class="k">Checked-Out Branch</span><span class="v">main</span></div>
+            <div class="cp-row"><span class="k">Clone URL</span><span class="v">git@github.com:you/secret-app.git</span></div>
+            <div class="cp-row"><span class="k">Last Deployed</span><span class="v">2 minutes ago · a1b2c3d</span></div>
+            <button class="cp-btn" type="button" tabindex="-1">Update from Remote<small>pull the latest commit from GitHub — one click</small></button>
+          </div>
+        </div>
+        <p class="after-fig">Illustration of what you'll see. The real page is cPanel's own — gitship only puts your repo on it.</p>
+      </div>
+      <ul class="after-points">
+        <li><strong>Publish with one click</strong>After every <span style="font-family:'JetBrains Mono',monospace;font-size:13px">git push</span>, open Git Version Control and press Update from Remote. That's the whole workflow.</li>
+        <li><strong>Or skip the click</strong><span style="font-family:'JetBrains Mono',monospace;font-size:13px">repo deploy</span> pulls the same code from Terminal — useful when cPanel's button refuses, because it pulls with fast-forward only.</li>
+        <li><strong>Broken state? One command repairs it</strong>Server edits, failed merges, half-uploads — <span style="font-family:'JetBrains Mono',monospace;font-size:13px">repo repair</span> resets the tree so the button works again.</li>
+        <li><strong>Delete the tool whenever you like</strong>The repo, the SSH key and cPanel's management are independent. gitship was only the installer.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section id="commands">
+  <div class="wrap">
+    <div class="sec-head">
+      <h2>Commands</h2>
+      <p>Installed to <span style="font-family:'JetBrains Mono',monospace">~/bin/repo</span> during setup — works from any folder in cPanel Terminal.</p>
+    </div>
+    <div class="cmd-table">
+      <div class="cmd-row"><div class="c">repo start</div><div class="d">The full setup wizard — keys, clone, registration, verification.</div></div>
+      <div class="cmd-row"><div class="c">repo status</div><div class="d">Check the connection right now: SSH to GitHub, sync state, ahead/behind, plain-language results.</div></div>
+      <div class="cmd-row"><div class="c">repo deploy</div><div class="d">Publish now — fetch and reset to the latest commit, everything logged.</div></div>
+      <div class="cmd-row"><div class="c">repo repair</div><div class="d">Fix a diverged working tree so cPanel's Update from Remote works again.</div></div>
+      <div class="cmd-row"><div class="c">repo rollback</div><div class="d">Serve an older commit for a moment — the next deploy returns to latest.</div></div>
+      <div class="cmd-row"><div class="c">repo log</div><div class="d">Read the deploy history for this project.</div></div>
+      <div class="cmd-row"><div class="c">repo key</div><div class="d">Show the deploy key, re-add it to GitHub, or register it in cPanel's key manager.</div></div>
+      <div class="cmd-row"><div class="c">repo register</div><div class="d">(Re)register the repo in cPanel Git Version Control and verify it appears.</div></div>
+      <div class="cmd-row"><div class="c">repo uninstall</div><div class="d">Remove what the tool added — asks before touching anything.</div></div>
+    </div>
+  </div>
+</section>
+
+<section id="security">
+  <div class="wrap">
+    <div class="sec-head">
+      <h2>Security, in plain terms</h2>
+    </div>
+    <div class="sec-grid">
+      <div class="sec-item"><h3>Your token is used once, then gone</h3><p>It is read with hidden input, used for two API calls, and never written to disk. Delete it on GitHub right after setup — the tool even reminds you to.</p></div>
+      <div class="sec-item"><h3>The deploy key can only read one repo</h3><p>Read-only, scoped to a single repository. If the server were ever compromised, there is no GitHub token sitting there to steal — just one limited key.</p></div>
+      <div class="sec-item"><h3>Keys live where cPanel expects them</h3><p>Created through cPanel's own key system inside your home folder. cPanel already blocks public access to .git directories on your account.</p></div>
+      <div class="sec-item"><h3>Nothing is deleted without asking</h3><p>Every uninstall step confirms first, the riskiest ones confirm twice. Removing the tool never breaks a working site.</p></div>
+    </div>
+  </div>
+</section>
+
+<section id="faq">
+  <div class="wrap">
+    <div class="sec-head"><h2>Questions beginners actually ask</h2></div>
+    <details open><summary>Do I need root or any special hosting plan?</summary><p>No. Everything runs as your cPanel user from cPanel → Terminal. Shared hosting is exactly the target: files live in your home folder, no package installs, no system changes.</p></details>
+    <details><summary>Does my repo really show up in cPanel → Git Version Control?</summary><p>Yes — gitship registers it through cPanel's own UAPI (the same thing the Create form does) and then verifies the repo is listed. If your host restricts that API, the tool prints the three fields to enter by hand instead.</p></details>
+    <details><summary>How do updates work after setup?</summary><p>Push to GitHub, then click Update from Remote in cPanel → Git Version Control. That's cPanel's native flow. If the button ever refuses because the server tree diverged, run repo repair — then the button works again. repo deploy publishes without the click.</p></details>
+    <details><summary>Is auto-deploy on push included?</summary><p>No — gitship is deliberately cPanel-native: no webhooks, no cron jobs, no extra moving parts. The tool's job is to make the hard setup disappear; after that, cPanel manages everything and the tool can be deleted without any effect on your site.</p></details>
+    <details><summary>Can I set up several private repos on one server?</summary><p>Yes. GitHub deploy keys are one per repository, so gitship gives each project its own key and its own SSH config entry automatically.</p></details>
+    <details><summary>What if the GitHub token stops working later?</summary><p>Nothing breaks — the token is only needed at setup moments. If you revoke it, future setup steps ask for a new one. The ongoing connection uses the deploy key, which stays on GitHub independently.</p></details>
+  </div>
+</section>
+
+<div class="cta">
+  <div class="wrap">
+    <h2>Your private repo is one command away</h2>
+    <p>Run this in cPanel → Terminal, answer two questions, paste a temporary token.</p>
+    <div class="chip">
+      <span>git clone https://github.com/rezwanvaiya2-0/gitship.git &amp;&amp; cd gitship &amp;&amp; ./repo start</span>
+      <button type="button" class="copy-btn2" aria-label="Copy install command">Copy</button>
+    </div>
+  </div>
+</div>
+
+<footer>
+  <div class="wrap">
+    <span>gitship v2.0.0 — private GitHub repos on cPanel, without the dance.</span>
+    <a href="https://github.com/rezwanvaiya2-0/gitship" target="_blank" rel="noopener">github.com/rezwanvaiya2-0/gitship</a>
+  </div>
+</footer>
+
+<script>
+// install-command copy buttons
+var CMD = 'git clone https://github.com/rezwanvaiya2-0/gitship.git && cd gitship && ./repo start';
+function wireCopy(btn){
+  btn.addEventListener('click', function(){
+    var done = function(){
+      var old = btn.textContent;
+      btn.textContent = 'Copied';
+      btn.classList.add('copied');
+      setTimeout(function(){ btn.textContent = old; btn.classList.remove('copied'); }, 1600);
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(CMD).then(done);
+    } else {
+      var ta = document.createElement('textarea');
+      ta.value = CMD; document.body.appendChild(ta); ta.select();
+      document.execCommand('copy'); document.body.removeChild(ta); done();
+    }
+  });
+}
+wireCopy(document.getElementById('copy-btn'));
+document.querySelectorAll('.copy-btn2').forEach(wireCopy);
+
+// hero terminal: type the command, then reveal real wizard output
+(function(){
+  var body = document.getElementById('term-body');
+  var reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  var LINES = [
+    ['step','== 1/6  Checking your server (as your cPanel user — no root) =='],
+    ['ok','[ok] git: git version 2.36.1'],
+    ['ok','[ok] cPanel uapi: found — automatic Git Version Control registration'],
+    ['ok','[ok] cPanel cpapi2: found — key will be created through cPanel'],
+    ['step','== 2/6  Your private repository =='],
+    ['q','? Private repo URL: git@github.com:you/secret-app.git'],
+    ['q','? Paste the GitHub token  (input hidden)'],
+    ['ok','[ok] Token verified - repository reachable, default branch: main'],
+    ['step','== 3/6  SSH deploy key (automatic) =='],
+    ['ok','[ok] SSH key created through cPanel: ~/.ssh/cpanel_deploy_secret-app'],
+    ['ok','[ok] Deploy key added to GitHub (read-only, this repo only)'],
+    ['ok','[ok] github.com host key pre-trusted (no interactive prompts)'],
+    ['ok','[ok] GitHub accepts this key: Hi you! You\'ve successfully authenticated'],
+    ['step','== 4/6  Where should the site files live? =='],
+    ['q','? Full path: ~/public_html/secret-app'],
+    ['step','== 5/6  Cloning your private repository =='],
+    ['ok','[ok] Cloned to: /home/you/public_html/secret-app'],
+    ['step','== 6/6  Registering with cPanel -> Git Version Control =='],
+    ['ok','[ok] Registered AND verified - it appears in Git Version Control'],
+    ['hint','You can DELETE the GitHub token now - it was never saved on this server.']
+  ];
+  function esc(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;');}
+  function line(pair){return '<span class="'+pair[0]+'">'+esc(pair[1])+'</span>';}
+  if (reduced) {
+    body.innerHTML = '<div><span class="cmd">./repo start</span></div>' + LINES.map(function(l){return '<div>'+line(l)+'</div>';}).join('');
+    return;
+  }
+  var cmd = './repo start', i = 0;
+  var cmdEl = document.createElement('div');
+  cmdEl.innerHTML = '<span class="cmd"></span><span class="caret"></span>';
+  body.appendChild(cmdEl);
+  var cmdSpan = cmdEl.querySelector('.cmd');
+  var typing = setInterval(function(){
+    cmdSpan.textContent = cmd.slice(0, ++i);
+    if (i >= cmd.length) {
+      clearInterval(typing);
+      var caret = cmdEl.querySelector('.caret'); if (caret) caret.remove();
+      var j = 0;
+      var reveal = setInterval(function(){
+        if (j >= LINES.length) { clearInterval(reveal); return; }
+        var div = document.createElement('div');
+        div.innerHTML = line(LINES[j++]);
+        body.appendChild(div);
+        body.scrollTop = body.scrollHeight;
+      }, reduced ? 0 : 170);
+    }
+  }, 75);
+})();
+</script>
+</body>
+</html>
