@@ -185,8 +185,9 @@ Sometimes GitHub needs a moment - re-run in 10s:  repo status"
       CPANEL_REG=1
       ok "Registered - the repo now appears in cPanel -> Git Version Control"
     else
-      warn "Automatic registration did not succeed. uapi output:"
-      dim "$(printf '%s' "${UAPI_OUT:-}" | head -c 400)"
+      warn "Automatic registration did not succeed. Full uapi output:"
+      dim "$(printf '%s' "${UAPI_OUT:-}" | head -c 800)"
+      dim "Fix the issue above, then re-run anytime with:  repo register"
     fi
   fi
   if [ "$CPANEL_REG" = "0" ] && [ "$DRY_RUN" != "1" ]; then
@@ -195,6 +196,7 @@ Sometimes GitHub needs a moment - re-run in 10s:  repo status"
     dim "  - Repository Path    : $REPO_PATH"
     dim "  - Repository Name    : $REPO"
     dim "  (cPanel will detect the existing repo and adopt it)"
+    dim "  Or retry the automatic way after fixing the error:  repo register"
   fi
 
   # ---- save state + helper command + summary ---------------------------------
@@ -297,6 +299,36 @@ cmd_status() {
     info "Last log entry: $(tail -n 1 "$DEPLOY_LOG")"
   fi
   echo
+}
+
+# ----------------------------------------------------------------------------
+# repo register — (re)register the current project in cPanel Git Version Control
+# Safe to re-run: verifies the repo actually appears in cPanel's list.
+# ----------------------------------------------------------------------------
+cmd_register() {
+  load_current_or_die "$1"
+  step "Registering $OWNER/$REPO in cPanel -> Git Version Control"
+  [ -d "$REPO_PATH/.git" ] || die "Not a git repository: $REPO_PATH"
+  if ! detect_uapi; then
+    die "uapi not found on this server. Register manually (30 seconds):
+cPanel -> Git Version Control -> Create:
+  - Clone a Repository : OFF (the repo already exists on disk)
+  - Repository Path    : $REPO_PATH
+  - Repository Name    : $REPO"
+  fi
+  info "Calling: $UAPI_BIN VersionControl create type=git name=$REPO repository_root=$REPO_PATH"
+  if cpanel_register_repo "$REPO_PATH" "$REPO"; then
+    ok "Registered AND verified - the repo now appears in cPanel -> Git Version Control"
+    dim "(refresh the cPanel page if you don't see it yet)"
+  else
+    err "Registration failed. Full uapi output:"
+    dim "$(printf '%s' "${UAPI_OUT:-}" | head -c 800)"
+    if [ -n "${UAPI_LIST:-}" ] && ! printf '%s' "$UAPI_LIST" | grep -qF "$REPO_PATH"; then
+      dim "cPanel repo list does not contain '$REPO_PATH' yet."
+    fi
+    dim "Create-attempt logs (if any): ~/.cpanel/logs/  (vc_*.log)"
+    die "Fix the issue above and re-run:  repo register"
+  fi
 }
 
 # ----------------------------------------------------------------------------
@@ -403,7 +435,7 @@ cmd_uninstall() {
     dim "  */5 * * * * $CRON_SH >/dev/null 2>&1"
   fi
   if detect_uapi && confirm "Remove from cPanel Git Version Control? (your files are NOT deleted)" "y"; then
-    if cpanel_remove_repo "$REPO_PATH"; then
+    if cpanel_remove_repo "$REPO_PATH" "$REPO"; then
       ok "Removed from cPanel's managed repositories."
     else
       warn "cPanel removal failed - remove it manually in the Git Version Control UI."
@@ -475,6 +507,15 @@ cmd_selftest() {
   load_conf "t"
   t "conf roundtrip secret" "s3cret" "$WEBHOOK_SECRET"
   t "conf roundtrip path"   "/tmp/pp" "$REPO_PATH"
+
+  uapi_output_failed '{"errors" : ["boom"]}'
+  t "uapi failure detect (spaced JSON)"  "0" "$?"
+  uapi_output_failed '{"errors":["boom"]}'
+  t "uapi failure detect (compact JSON)" "0" "$?"
+  uapi_output_failed '{"status" : 0}'
+  t "uapi failure detect (status 0)"     "0" "$?"
+  uapi_output_failed '{"status" : 1, "errors" : null}'
+  t "uapi success detect"                "1" "$?"
   if [ -n "$_oldcur" ]; then
     printf '%s' "$_oldcur" > "$DEPLOY_STATE_DIR/current"
   else

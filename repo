@@ -22,7 +22,7 @@
 #     8. registers the repo in cPanel -> Git Version Control via uapi
 # ============================================================================
 
-VERSION="1.0.0"
+VERSION="1.1.0"
 
 # Resolve the real location of this script (works through the ~/bin/repo symlink)
 SOURCE="${BASH_SOURCE[0]}"
@@ -63,6 +63,8 @@ repo — one-command private GitHub -> cPanel deployer (v$VERSION)
 USAGE
   repo start [--repo URL] [--branch NAME] [--path DIR] [--dry-run]
                         Full wizard: SSH deploy key + clone + cPanel registration
+  repo register [name]  (Re)register the current project in cPanel -> Git
+                        Version Control and verify it appears there
   repo status [name]    Check the GitHub <-> server connection right now
   repo deploy           Pull the latest code from GitHub now (fetch + reset, logged)
   repo repair [--clean] Fix a diverged/broken working tree (discards server edits)
@@ -89,6 +91,7 @@ CMD="${1:-help}"
 
 case "$CMD" in
   start)                cmd_start "$@" ;;
+  register)             cmd_register "$@" ;;
   status)               cmd_status "$@" ;;
   deploy)               cmd_deploy "$@" ;;
   repair)               cmd_repair "$@" ;;

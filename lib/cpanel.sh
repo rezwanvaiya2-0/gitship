@@ -3,6 +3,12 @@
 #  ships with every cPanel account (no root needed). We register the cloned
 #  repo in cPanel -> Git Version Control so the user can manage it from the
 #  familiar cPanel UI (history, branch switcher, Update from Remote).
+#
+#  Verified against the official OpenAPI spec:
+#    VersionControl::create requires:  type=git  name=<display name>
+#                                      repository_root=<absolute path>
+#    (omitting source_repository makes cPanel adopt an existing repo dir)
+#    uapi CLI JSON uses spaced style:  "errors" : [ ... ]  /  "status" : 1
 # ============================================================================
 
 UAPI_BIN=""
@@ -18,26 +24,43 @@ detect_uapi() {
   return 0
 }
 
-# cpanel_register_repo PATH NAME -> sets UAPI_OUT ; returns 0 on success
+# uapi_output_failed OUTPUT — returns 0 when uapi's JSON reports failure.
+# Handles both compact ("errors":["x"]) and spaced ("errors" : ["x"]) styles.
+uapi_output_failed() {
+  printf '%s' "$1" | grep -Eq '"errors"[ ]*:[ ]*\["' && return 0
+  printf '%s' "$1" | grep -Eq '"status"[ ]*:[ ]*0'   && return 0
+  return 1
+}
+
+# cpanel_verify_registered PATH — returns 0 when cPanel's repo list has PATH
+cpanel_verify_registered() {
+  local _out
+  _out=$("$UAPI_BIN" VersionControl retrieve 2>&1) || return 1
+  UAPI_LIST="$_out"
+  printf '%s' "$_out" | grep -qF "$1"
+}
+
+# cpanel_register_repo ROOT NAME — create + verify. Sets UAPI_OUT / UAPI_LIST.
 cpanel_register_repo() {
   local _rc
   UAPI_OUT=$("$UAPI_BIN" VersionControl create \
-      "repository_path=$1" "repository_name=$2" 2>&1)
+      "type=git" "name=$2" "repository_root=$1" 2>&1)
   _rc=$?
   [ "$_rc" -eq 0 ] || return 1
-  # uapi prints JSON; an error reply contains a non-empty errors array
-  if printf '%s' "$UAPI_OUT" | grep -q '"errors": *\["'; then return 1; fi
-  return 0
+  if uapi_output_failed "$UAPI_OUT"; then return 1; fi
+  # Don't trust the reply alone — confirm cPanel now actually lists the repo.
+  cpanel_verify_registered "$1"
 }
 
-# cpanel_remove_repo PATH -> best-effort removal from cPanel's managed list
+# cpanel_remove_repo ROOT NAME — best-effort removal from cPanel's list
 cpanel_remove_repo() {
   local _rc
   UAPI_OUT=$("$UAPI_BIN" VersionControl delete \
-      "repository_path=$1" 2>&1)
+      "repository_root=$1" "name=$2" 2>&1)
   _rc=$?
   [ "$_rc" -eq 0 ] || return 1
-  if printf '%s' "$UAPI_OUT" | grep -q '"errors": *\["'; then return 1; fi
+  if uapi_output_failed "$UAPI_OUT"; then return 1; fi
+  if cpanel_verify_registered "$1"; then return 1; fi
   return 0
 }
 

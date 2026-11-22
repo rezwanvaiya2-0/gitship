@@ -87,6 +87,7 @@ cPanel → Git Version Control (when `uapi` is available).
 | Command | What it does |
 |---|---|
 | `repo start` | full setup wizard (see above) |
+| `repo register` | (re)register the current project in cPanel → Git Version Control, then **verify** it actually appears there |
 | `repo status` | **checks the connection right now**: SSH to GitHub, fetch, ahead/behind, auto-update state |
 | `repo deploy` | publish now: `git fetch` + `git reset --hard`, logged |
 | `repo repair` | fix a diverged/broken tree (cPanel's own `--ff-only` pull refuses to; this one doesn't). `--clean` also removes untracked files (careful: uploads!) |
@@ -148,6 +149,7 @@ keeps the tree clean so the *Update from Remote* button never hits its
 | webhook returns `deploy: exec() disabled` | host disabled PHP `exec()` → re-run `repo start` and choose **cron** mode |
 | cPanel "Update from Remote" fails | server tree diverged → `repo repair` (it resets cleanly), then the button works again |
 | `uapi not found` | not a cPanel session, or restricted shell → finish the wizard and register the repo manually (steps are printed at the end) |
+| repo missing in cPanel → Git Version Control | registration failed or was interrupted → update the tool (`git pull` in its folder) and run `repo register`; full uapi output is printed if it fails again |
 | pushes don't deploy | check `repo status` and `repo log`; confirm the webhook exists in GitHub → Settings → Webhooks and shows green ✓ deliveries |
 
 ---
