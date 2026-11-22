@@ -1,0 +1,102 @@
+#!/usr/bin/env bash
+# ============================================================================
+#  repo — one-command private GitHub -> cPanel deployer
+#
+#  For cPanel shared-hosting users (cPanel Terminal, no root required).
+#  Full documentation: README.md
+#
+#  Quick start:
+#     git clone https://github.com/rezwanvaiya2-0/cpanel-deploy.git
+#     cd cpanel-deploy
+#     ./repo start
+#
+#  What `repo start` does:
+#     1. checks the server (git, curl, php, cPanel uapi)
+#     2. verifies your GitHub token + private repo access
+#     3. generates an SSH deploy key and adds it to GitHub via the API
+#        (the token is used for a few seconds and never saved on the server)
+#     4. pre-trusts github.com host keys (no interactive prompts)
+#     5. tests the GitHub <-> server SSH connection
+#     6. clones the repo where you want the site
+#     7. optionally installs webhook auto-deploy (push = live) or cron pull
+#     8. registers the repo in cPanel -> Git Version Control via uapi
+# ============================================================================
+
+VERSION="1.0.0"
+
+# Resolve the real location of this script (works through the ~/bin/repo symlink)
+SOURCE="${BASH_SOURCE[0]}"
+while [ -L "$SOURCE" ]; do
+  DIR="$(cd -P "$(dirname "$SOURCE")" && pwd)"
+  SOURCE="$(readlink "$SOURCE")"
+  [ "${SOURCE#/*}" != "$SOURCE" ] || SOURCE="$DIR/$SOURCE"
+done
+REPO_TOOL_DIR="$(cd -P "$(dirname "$SOURCE")" && pwd)"
+
+# Load libraries (order matters: ui provides messaging used by the rest)
+. "$REPO_TOOL_DIR/lib/ui.sh"
+. "$REPO_TOOL_DIR/lib/github.sh"
+. "$REPO_TOOL_DIR/lib/ssh.sh"
+. "$REPO_TOOL_DIR/lib/cpanel.sh"
+. "$REPO_TOOL_DIR/lib/project.sh"
+. "$REPO_TOOL_DIR/lib/webhook.sh"
+. "$REPO_TOOL_DIR/lib/commands.sh"
+
+# ----------------------------------------------------------------------------
+# shared command helpers
+# ----------------------------------------------------------------------------
+
+load_current_or_die() {
+  SLUG="${1:-$(current_slug)}"
+  [ -n "$SLUG" ] || die "No project found on this server yet. Set one up first:  repo start"
+  load_conf "$SLUG" || die "No saved project called '$SLUG'. List what exists:  repo status"
+}
+
+print_version() {
+  printf 'repo %s — private GitHub -> cPanel deployer (no root needed)\n' "$VERSION"
+}
+
+print_help() {
+  cat <<HELP
+repo — one-command private GitHub -> cPanel deployer (v$VERSION)
+
+USAGE
+  repo start [--repo URL] [--branch NAME] [--path DIR] [--dry-run]
+                        Full wizard: SSH deploy key + clone + cPanel registration
+  repo status [name]    Check the GitHub <-> server connection right now
+  repo deploy           Pull the latest code from GitHub now (fetch + reset, logged)
+  repo repair [--clean] Fix a diverged/broken working tree (discards server edits)
+  repo rollback [ref]   Temporarily serve an older commit (default: HEAD~1)
+  repo log [lines]      Show the deploy log (webhook + cron + manual deploys)
+  repo key              Show the deploy public key; optionally re-add via API
+  repo uninstall [name] Remove this project (asks before deleting anything)
+  repo selftest         Internal checks (for development)
+  repo version | help
+
+TYPICAL FIRST RUN (on cPanel -> Terminal)
+  git clone https://github.com/rezwanvaiya2-0/cpanel-deploy.git
+  cd cpanel-deploy
+  ./repo start
+HELP
+}
+
+# ----------------------------------------------------------------------------
+# dispatch
+# ----------------------------------------------------------------------------
+
+CMD="${1:-help}"
+[ $# -gt 0 ] && shift
+
+case "$CMD" in
+  start)                cmd_start "$@" ;;
+  status)               cmd_status "$@" ;;
+  deploy)               cmd_deploy "$@" ;;
+  repair)               cmd_repair "$@" ;;
+  rollback)             cmd_rollback "$@" ;;
+  log)                  cmd_log "$@" ;;
+  key)                  cmd_key "$@" ;;
+  uninstall)            cmd_uninstall "$@" ;;
+  selftest)             cmd_selftest "$@" ;;
+  version|--version|-v) print_version ;;
+  help|--help|-h|*)     print_help ;;
+esac
