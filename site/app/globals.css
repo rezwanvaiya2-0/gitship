@@ -127,21 +127,27 @@ section{padding:84px 0}
 .divider h2 em{font-style:normal;color:var(--accent)}
 .divider p{color:var(--muted);margin-top:12px;font-size:16.5px}
 
-/* ledger mapping */
-.ledger{border:1px solid var(--line);border-radius:var(--radius);overflow:hidden}
-.row{display:grid;grid-template-columns:1fr 1fr;border-bottom:1px solid var(--line)}
-.row:last-child{border-bottom:0}
-.row .cell{padding:20px 24px}
-.row .cell:first-child{border-right:1px solid var(--line)}
-@media(max-width:760px){.row{grid-template-columns:1fr}.row .cell:first-child{border-right:0;border-bottom:1px dashed var(--line)}}
-.ledger-head .cell{font:600 13px var(--font-sora),sans-serif;color:var(--muted);background:rgba(255,255,255,.02)}
-.ledger .manual{color:var(--muted)}
-.ledger .auto strong{display:block;font-family:var(--font-sora),sans-serif;font-size:15.5px;margin-bottom:4px;color:var(--ink)}
-.ledger .auto{font-size:14.5px;color:var(--muted)}
-.ledger .manual .tag,.ledger .auto .tag{display:inline-block;font:600 11px var(--font-mono),monospace;margin-bottom:8px;
-  padding:3px 9px;border-radius:99px;letter-spacing:.02em}
-.ledger .manual .tag{background:rgba(229,105,122,.12);color:var(--danger)}
-.ledger .auto .tag{background:rgba(90,217,140,.1);color:var(--term-green)}
+/* mapping — git diff style */
+.diff{border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;background:var(--term)}
+.diff-head{padding:13px 18px;border-bottom:1px solid var(--line);background:rgba(255,255,255,.02);
+  font:400 12.5px var(--font-mono),monospace;color:var(--term-dim);display:grid;gap:4px}
+.diff-head .stat{color:var(--term-green);font-weight:600}
+.diff-head .msg{color:var(--ink);font-weight:600;font-size:13.5px}
+.diff-legend{display:flex;gap:20px;padding:9px 18px;border-bottom:1px solid var(--line);
+  font:600 11.5px var(--font-mono),monospace;color:var(--muted);background:rgba(255,255,255,.02)}
+.diff-legend .m::before{content:'−';color:var(--danger);margin-right:7px}
+.diff-legend .a::before{content:'+';color:var(--term-green);margin-right:7px}
+.dline{display:grid;grid-template-columns:42px 42px 1fr;font:400 12.8px/1.7 var(--font-mono),monospace}
+.dline .g{color:#3E4C5F;text-align:right;padding:3px 8px 3px 0;user-select:none;border-right:1px solid var(--line)}
+.dline .c{padding:3px 16px;color:var(--ink);white-space:pre-wrap;word-break:break-word}
+.dline .sign{font-weight:600;margin-right:6px;user-select:none}
+.dline.minus{background:rgba(229,105,122,.09)}
+.dline.minus .sign{color:var(--danger)}
+.dline.plus{background:rgba(90,217,140,.08)}
+.dline.plus .sign{color:var(--term-green)}
+.dline.hunk{color:#7C8DB0;background:rgba(122,167,255,.06)}
+.dline.hunk .c{padding-left:14px}
+@media(max-width:640px){.dline{grid-template-columns:30px 30px 1fr;font-size:11.5px}.dline .c{padding:3px 10px}}
 
 /* wizard steps */
 .steps{display:grid;gap:0;border:1px solid var(--line);border-radius:var(--radius);overflow:hidden}
@@ -220,4 +226,4 @@ footer{border-top:1px solid var(--line);background:var(--panel);color:var(--mute
 .reveal-hide{opacity:0;transform:translateY(18px)}
 .reveal-in{opacity:1;transform:none;transition:opacity .7s ease,transform .7s ease}
 @media (prefers-reduced-motion:reduce){.reveal-hide{opacity:1;transform:none}}
-.ledger .row:hover,.cmd-table .cmd-row:hover,.steps .step-row:hover{background:rgba(255,255,255,.02)}
+.dline.minus:hover,.dline.plus:hover,.cmd-table .cmd-row:hover,.steps .step-row:hover{background:rgba(255,255,255,.03)}
