@@ -48,12 +48,12 @@ gen_deploy_key() {
   fi
   ensure_ssh_dir
   if ssh-keygen -t ed25519 -f "$_path" -N '' \
-       -C "cpanel-deploy-$(date +%Y%m%d%H%M%S)" >/dev/null 2>&1; then
+       -C "gitship-$(date +%Y%m%d%H%M%S)" >/dev/null 2>&1; then
     KEY_ALG="ed25519"
   else
     info "This server's ssh-keygen lacks ed25519; generating RSA-4096 instead..."
     ssh-keygen -t rsa -b 4096 -f "$_path" -N '' \
-      -C "cpanel-deploy-$(date +%Y%m%d%H%M%S)" >/dev/null 2>&1 \
+      -C "gitship-$(date +%Y%m%d%H%M%S)" >/dev/null 2>&1 \
       || die "ssh-keygen failed on this server — please report this to the tool author."
     KEY_ALG="rsa"
   fi

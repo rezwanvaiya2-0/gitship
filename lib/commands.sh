@@ -193,7 +193,7 @@ Manual path: finish setup, then run 'repo key' for copy-paste instructions."
     PUBKEY=$(cat "$SSH_KEY.pub" 2>/dev/null) || die "Deploy key public file missing: $SSH_KEY.pub"
     HOSTN=$(hostname 2>/dev/null || echo cpanel)
     info "Adding read-only deploy key to $OWNER/$REPO via the GitHub API..."
-    add_deploy_key "$OWNER" "$REPO" "$PUBKEY" "cpanel-deploy $HOSTN $(date +%Y-%m-%d)" \
+    add_deploy_key "$OWNER" "$REPO" "$PUBKEY" "gitship $HOSTN $(date +%Y-%m-%d)" \
       || die "Could not add the deploy key (see the message above).
 Manual path: run 'repo key' - it prints the key + exact GitHub steps."
     ok "Deploy key added to GitHub (read-only, this repo only)"
@@ -501,7 +501,7 @@ cmd_key() {
     verify_repo_access "$OWNER" "$REPO"
     HOSTN=$(hostname 2>/dev/null || echo cpanel)
     if add_deploy_key "$OWNER" "$REPO" "$(cat "$SSH_KEY.pub")" \
-         "cpanel-deploy $HOSTN $(date +%Y-%m-%d)"; then
+         "gitship $HOSTN $(date +%Y-%m-%d)"; then
       ok "Deploy key added. Testing connection..."
       if ssh_auth_test_for_url "$CLONE_URL"; then
         ok "Connection OK - $(printf '%s' "$SSH_TEST_OUT" | head -n 1)"
@@ -539,7 +539,8 @@ cmd_uninstall() {
   info "6. optionally: DELETE the cloned files at $REPO_PATH"
   echo
   dim "GitHub side is NOT automatic here: remove the deploy key manually at"
-  dim "github.com/$OWNER/$REPO -> Settings -> Deploy keys -> remove 'cpanel-deploy ...'"
+  dim "github.com/$OWNER/$REPO -> Settings -> Deploy keys -> remove the key"
+  dim "titled 'gitship ...' (older setups: 'pvt-repo-push ...' or 'cpanel-deploy ...')"
   echo
   confirm "Start uninstall?" "n" || { dim "aborted."; return 1; }
 

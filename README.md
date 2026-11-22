@@ -1,4 +1,4 @@
-# cpanel-deploy
+# gitship
 
 **One-command private GitHub → cPanel deploy tool for shared hosting.**
 No root. No SSH key dance. No manual "Pull from Remote" clicking.
@@ -24,8 +24,8 @@ Deploying a **private** GitHub repo to cPanel the official way means:
 (as your cPanel user — nothing needs root):
 
 ```bash
-git clone https://github.com/rezwanvaiya2-0/cpanel-deploy.git
-cd cpanel-deploy
+git clone https://github.com/rezwanvaiya2-0/gitship.git
+cd gitship
 ./repo start
 ```
 
@@ -57,7 +57,7 @@ Open **https://github.com/settings/personal-access-tokens/new** (fine-grained to
 
 | Setting | Value |
 |---|---|
-| Token name | anything, e.g. `cpanel-deploy setup` |
+| Token name | anything, e.g. `gitship setup` |
 | Expiration | shortest you like (it's used once) |
 | Repository access | **Only select repositories** → pick your private repo |
 | Permissions → Repository | **Administration: Read and write** (adds the deploy key for you) |
