@@ -31,7 +31,7 @@ banner() {
   cat <<'BANNER'
   +--------------------------------------------------------+
   |  repo  --  private GitHub repos on cPanel, made easy   |
-  |  setup + connection checks + auto-deploy, no root      |
+  |  setup + connection checks + cPanel native, no root    |
   +--------------------------------------------------------+
 BANNER
   printf '%s\n' "$C_RESET"

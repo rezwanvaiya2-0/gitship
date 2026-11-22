@@ -18,11 +18,10 @@
 #     4. pre-trusts github.com host keys (no interactive prompts)
 #     5. tests the GitHub <-> server SSH connection
 #     6. clones the repo where you want the site
-#     7. optionally installs webhook auto-deploy (push = live) or cron pull
-#     8. registers the repo in cPanel -> Git Version Control via uapi
+#     7. registers the repo in cPanel -> Git Version Control via uapi
 # ============================================================================
 
-VERSION="1.3.2"
+VERSION="2.0.0"
 
 # Resolve the real location of this script (works through the ~/bin/repo symlink)
 SOURCE="${BASH_SOURCE[0]}"
@@ -39,7 +38,6 @@ REPO_TOOL_DIR="$(cd -P "$(dirname "$SOURCE")" && pwd)"
 . "$REPO_TOOL_DIR/lib/ssh.sh"
 . "$REPO_TOOL_DIR/lib/cpanel.sh"
 . "$REPO_TOOL_DIR/lib/project.sh"
-. "$REPO_TOOL_DIR/lib/webhook.sh"
 . "$REPO_TOOL_DIR/lib/commands.sh"
 
 # ----------------------------------------------------------------------------
@@ -69,7 +67,7 @@ USAGE
   repo deploy           Pull the latest code from GitHub now (fetch + reset, logged)
   repo repair [--clean] Fix a diverged/broken working tree (discards server edits)
   repo rollback [ref]   Temporarily serve an older commit (default: HEAD~1)
-  repo log [lines]      Show the deploy log (webhook + cron + manual deploys)
+  repo log [lines]      Show the deploy log
   repo key              Show the deploy public key; optionally re-add via API
   repo uninstall [name] Remove this project (asks before deleting anything)
   repo selftest         Internal checks (for development)

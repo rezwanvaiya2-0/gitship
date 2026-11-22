@@ -1,10 +1,11 @@
 # gitship
 
-**One-command private GitHub → cPanel deploy tool for shared hosting.**
-No root. No SSH key dance. No manual "Pull from Remote" clicking.
+**Set up private GitHub repos on cPanel shared hosting — perfectly, in one command.**
+No root. No SSH key dance. Afterwards everything is managed in the **familiar cPanel UI**.
 
 ```
-laptop: git push ──► GitHub ──► webhook ──► your cPanel site (2-5 seconds later) 🎉
+laptop: git push ──► GitHub
+cPanel → Git Version Control → Update from Remote ──► live site ✅
 ```
 
 ---
@@ -18,9 +19,9 @@ Deploying a **private** GitHub repo to cPanel the official way means:
 - pasting the public key into GitHub → Deploy keys,
 - trusting github.com's host key at some random moment,
 - cloning in cPanel → Git Version Control,
-- and clicking **Update from Remote** after every single push.
+- and getting every one of those steps right, in order.
 
-`repo` collapses all of that into **one wizard** that runs in **cPanel → Terminal**
+`gitship` collapses all of that into **one wizard** that runs in **cPanel → Terminal**
 (as your cPanel user — nothing needs root):
 
 ```bash
@@ -36,18 +37,16 @@ You answer 3 questions and paste a temporary GitHub token. The tool:
 3. ✔ generates an SSH deploy key — **through cPanel itself** when `cpapi2` is
    available, so it shows up in **cPanel → SSH Access → Manage SSH Keys**
    (`~/.ssh/cpanel_deploy_<project>`); falls back to a local ed25519 key otherwise
-4. ✔ adds it to GitHub **via the API automatically** (read-only, this repo only)
+4. ✔ adds the deploy key to GitHub **via the API automatically** (read-only,
+   this repo only — the token is used for ~10 seconds and never saved on the server)
 5. ✔ pre-trusts github.com's host keys (no scary interactive prompt)
 6. ✔ **tests the GitHub ↔ server connection** and shows you the result
 7. ✔ clones the repo where you want the site
-8. ✔ optionally installs **webhook auto-deploy** (push = live) or a 5-minute cron pull
-9. ✔ registers the repo in **cPanel → Git Version Control** via `uapi` —
-   it appears in the cPanel UI like any native repo (history, branch switcher,
-   Update from Remote — all still work)
+8. ✔ registers it in **cPanel → Git Version Control** via `uapi` and **verifies**
+   it actually appears there
 
-At the end you get a summary card with the exact 2 values to paste into GitHub's
-webhook settings (if you chose auto-deploy), and a reminder that you can delete
-the token — it was used for ~10 seconds and never saved on the server.
+The final summary card tells you: what was installed, where the files live,
+how to publish updates, and that you can delete the token now.
 
 ---
 
@@ -70,17 +69,20 @@ Generate → copy → paste into `repo start` when asked. Done.
 
 ---
 
-## The 4 ways this tool can run
+## How updates work — 100% cPanel native
 
-| # | Mode | Updates | Choose when |
-|---|------|---------|-------------|
-| 1 | **cPanel Git native** ⭐ | cPanel's *Update from Remote* button | you want the familiar cPanel UI |
-| 2 | **Mode 1 + webhook** | every `git push` auto-deploys | the best experience (default choice in the wizard) |
-| 3 | **cron pull** | checks GitHub every 5 min | webhooks blocked / PHP `exec()` disabled |
-| 4 | **manual** | `repo deploy` whenever you say so | full control |
+After setup, your repo is a **completely normal cPanel-managed Git repository**:
 
-The wizard asks and sets it up. All modes keep the repo visible in
-cPanel → Git Version Control (when `uapi` is available).
+- It appears in **cPanel → Git Version Control** with history (Gitweb), branch
+  switcher and the **Update from Remote** button
+- **Publishing = one click** on *Update from Remote* after you `git push`
+- Power users can skip the click: **`repo deploy`** does the same pull from
+  Terminal — but stronger (see below)
+
+**Why the helpers exist:** cPanel's own button pulls with `--ff-only`, so it
+refuses to update when the server tree ever diverges. gitship's `repo repair`
+fixes that state, and `repo deploy` uses `fetch + reset --hard` so it can't get
+blocked in the first place.
 
 ---
 
@@ -90,40 +92,15 @@ cPanel → Git Version Control (when `uapi` is available).
 |---|---|
 | `repo start` | full setup wizard (see above) |
 | `repo register` | (re)register the current project in cPanel → Git Version Control, then **verify** it actually appears there |
-| `repo status` | **checks the connection right now**: SSH to GitHub, fetch, ahead/behind, auto-update state |
+| `repo status` | **checks the connection right now**: SSH to GitHub, fetch, ahead/behind, cPanel listing |
 | `repo deploy` | publish now: `git fetch` + `git reset --hard`, logged |
-| `repo repair` | fix a diverged/broken tree (cPanel's own `--ff-only` pull refuses to; this one doesn't). `--clean` also removes untracked files (careful: uploads!) |
+| `repo repair` | fix a diverged/broken tree so cPanel's button works again. `--clean` also removes untracked files (careful: uploads!) |
 | `repo rollback [ref]` | temporarily serve an older commit (default `HEAD~1`) — next deploy returns to latest |
-| `repo log [n]` | show the deploy log (webhook + cron + manual) |
+| `repo log [n]` | show the deploy log |
 | `repo key` | show the deploy public key; re-add it to GitHub via the API, and/or register it in cPanel → SSH Access so it shows under **Manage SSH Keys** |
 | `repo uninstall` | remove the project's pieces — asks before deleting anything |
 
 Everything is logged to `~/.cpanel-deploy/<project>/deploy.log`.
-
----
-
-## How auto-deploy works (webhook mode)
-
-`repo start` writes two things:
-
-- `~/public_html/deploy-<random>.php` — the tiny receiver (holds **no secrets**)
-- `~/.cpanel-deploy/<project>/deploy.ini` — secret + paths, mode 600, **outside the web root**
-
-The receiver verifies GitHub's `X-Hub-Signature-256` HMAC signature, ignores
-anything not signed by GitHub, reacts only to pushes on your branch, and runs:
-
-```bash
-git fetch origin <branch> && git reset --hard FETCH_HEAD
-```
-
-in the project folder. Because `reset --hard` only touches **tracked** files,
-the receiver file and any untracked files (e.g. `.env` you keep on the server)
-are never disturbed. Every step is appended to the deploy log — see it with
-`repo log`.
-
-cPanel's Git Version Control UI keeps working the whole time; the receiver
-keeps the tree clean so the *Update from Remote* button never hits its
-`--ff-only` limitation.
 
 ---
 
@@ -132,17 +109,14 @@ keeps the tree clean so the *Update from Remote* button never hits its
 After `repo start` finishes, your repo is a **completely normal cPanel-managed
 Git repository**. Everything keeps working whether or not this tool remains:
 
-- cPanel → Git Version Control manages it natively (history, branches, Update
-  from Remote) — registered through cPanel's own UAPI
+- cPanel → Git Version Control manages it natively — registered through
+  cPanel's own UAPI (`VersionControl::create`)
 - The remote URL is the clean, standard `git@github.com:owner/repo.git` for
   your first project (a per-project SSH alias is used automatically when you
   add a second project, since GitHub deploy keys are repo-scoped)
 - The SSH deploy key lives in `~/.ssh/` and works with or without this tool
-- The webhook receiver (`deploy-*.php`) and the cron pull script are
-  **self-contained** — they read their own config and never call the tool
-- `repo uninstall` asks before removing each piece: keep the webhook or cron
-  and they keep working; remove everything and only then does auto-deploy stop.
-  Site files are only deleted after a double confirmation.
+- `repo uninstall` asks before removing each piece. Site files are only
+  deleted after a double confirmation.
 
 ---
 
@@ -152,10 +126,12 @@ Git repository**. Everything keeps working whether or not this tool remains:
   written to disk** — delete it after setup, as the summary suggests.
 - The deploy key is **read-only** and scoped to **one repo** — even if the
   server is compromised later, there is no GitHub token to steal.
-- The webhook rejects unsigned requests (HMAC `sha256` with a 64-hex-char secret).
-- The webhook secret + paths live outside the web root with mode 600.
 - On cPanel hosts, public access to `.git` directories is already blocked
   globally by cPanel itself.
+- Keys created through cPanel (API 2 `SSH::genkey`) are listed in
+  **SSH Access → Manage SSH Keys**; they show as *not authorized* — that is
+  normal: authorization only applies to people logging **into** the server,
+  while deploy keys connect **out** to GitHub.
 
 ---
 
@@ -166,13 +142,11 @@ Git repository**. Everything keeps working whether or not this tool remains:
 | `401` during token verify | token expired/wrong → make a fresh one, re-run |
 | `404` during token verify | repo not selected in the token's *Repository access*, or repo name typo |
 | `403` when adding the deploy key | token lacks **Administration: Read and write** |
-| "key is already in use" | that SSH key is a deploy key of another repo — that's expected; this tool creates one unique key per project |
-| webhook returns `deploy: exec() disabled` | host disabled PHP `exec()` → re-run `repo start` and choose **cron** mode |
+| "key is already in use" | that SSH key is a deploy key of another repo — expected; this tool creates one unique key per project |
 | cPanel "Update from Remote" fails | server tree diverged → `repo repair` (it resets cleanly), then the button works again |
-| `uapi not found` | not a cPanel session, or restricted shell → finish the wizard and register the repo manually (steps are printed at the end) |
 | repo missing in cPanel → Git Version Control | registration failed or was interrupted → update the tool (`git pull` in its folder) and run `repo register`; full uapi output is printed if it fails again |
 | deploy key not visible in cPanel → SSH Access | update the tool (`git pull`), then run `repo key` and choose the cPanel registration option |
-| pushes don't deploy | check `repo status` and `repo log`; confirm the webhook exists in GitHub → Settings → Webhooks and shows green ✓ deliveries |
+| `uapi not found` | not a cPanel session, or restricted shell → finish the wizard and register the repo manually (steps are printed at the end) |
 
 ---
 
@@ -182,22 +156,23 @@ Git repository**. Everything keeps working whether or not this tool remains:
 `$HOME` (`~/.ssh`, `~/.cpanel-deploy`, `~/bin`, your web folder).
 
 **Can I deploy several private repos on one server?** Yes — GitHub deploy keys
-are one-per-repo, so the tool creates a dedicated key + SSH `Host` alias per
+are one-per-repo, so the tool creates a dedicated key + SSH `Host` entry per
 project and runs the wizard once per repo.
 
 **Will my repo still show in cPanel → Git Version Control?** Yes — that's the
-point: `repo` registers it via cPanel's own UAPI (`VersionControl::create`).
-If `uapi` is unavailable, the final summary prints the 3 fields to enter in the
-cPanel UI instead (30 seconds).
+point: `repo` registers it via cPanel's own UAPI. If `uapi` is unavailable, the
+final summary prints the 3 fields to enter in the cPanel UI instead (30 seconds).
+
+**Why no auto-deploy on push?** gitship is deliberately **cPanel-native**: your
+repo is managed exactly like any other cPanel Git repo, and publishing is the
+one-click *Update from Remote* button. No extra moving parts, nothing that can
+silently break — and the tool itself can be deleted without affecting your site.
 
 **Where do I see the SSH deploy key in cPanel?**
 cPanel → Security → **SSH Access** → **Manage SSH Keys** — look for the key
 named `cpanel_deploy_<project>`. Keys created by `repo start` are generated
-through cPanel (API 2 `SSH::genkey`) so they appear there natively; keys
-generated by older versions of the tool can be registered for visibility with
-`repo key`. Note: the key will show as **"not authorized" — that is normal.**
-cPanel's "Authorize" only applies to people logging *into* your server; deploy
-keys are used for *outgoing* connections to GitHub.
+through cPanel so they appear there natively; keys generated by older versions
+of the tool can be registered for visibility with `repo key`.
 
 **Where is my data?** Project state: `~/.cpanel-deploy/`. SSH keys: `~/.ssh/`.
 The `repo` command: `~/bin/repo`. Remove everything per project with `repo uninstall`.

@@ -55,7 +55,7 @@ migrate_github_com_block_to_alias() {
 # repo start — the full wizard
 # ----------------------------------------------------------------------------
 cmd_start() {
-  local _url_in="" _branch_in="" _path_in="" _url="" _mode="manual" _in_webroot=0
+  local _url_in="" _branch_in="" _path_in="" _url=""
   while [ $# -gt 0 ]; do
     case "$1" in
       --repo)    _url_in="$2";    shift 2 ;;
@@ -72,7 +72,7 @@ cmd_start() {
   fi
 
   # ---- 1/7 environment -------------------------------------------------------
-  step "1/7  Checking your server (running as your cPanel user - no root needed)"
+  step "1/6  Checking your server (running as your cPanel user - no root needed)"
   command -v git >/dev/null 2>&1 \
     || die "git is not available on this server.
 Most cPanel hosts ship it. Ask your host to enable git, or use the
@@ -83,7 +83,7 @@ cron+zipball fallback described in README.md."
   if command -v php >/dev/null 2>&1; then
     ok "php: $(php -r 'echo PHP_VERSION;' 2>/dev/null || php --version 2>/dev/null | head -n 1)"
   else
-    warn "php CLI not found - webhook mode may still work through the web server."
+    warn "php CLI not found - only cosmetic here; cPanel's web PHP is what matters for your site."
   fi
   if detect_uapi; then
     ok "cPanel uapi: found — automatic Git Version Control registration available"
@@ -101,7 +101,7 @@ cron+zipball fallback described in README.md."
   fi
 
   # ---- 2/7 repo + token ------------------------------------------------------
-  step "2/7  Your private repository"
+  step "2/6  Your private repository"
   if [ -n "$_url_in" ]; then
     _url="$_url_in"
   else
@@ -139,7 +139,7 @@ Manual path: finish setup, then run 'repo key' for copy-paste instructions."
   ok "Token verified - repository reachable, default branch: $GH_DEFAULT_BRANCH"
 
   # ---- 3/7 SSH deploy key ----------------------------------------------------
-  step "3/7  SSH deploy key (automatic - replaces the whole manual SSH dance)"
+  step "3/6  SSH deploy key (automatic - replaces the whole manual SSH dance)"
   SSH_ALIAS="github-$SLUG"
   KEYNAME="cpanel_deploy_$SLUG"
   SSH_KEY="$HOME/.ssh/$KEYNAME"
@@ -219,7 +219,7 @@ Sometimes GitHub needs a moment - re-run in 10s:  repo status"
   fi
 
   # ---- 4/7 location ----------------------------------------------------------
-  step "4/7  Where should the site files live?"
+  step "4/6  Where should the site files live?"
   if [ -n "$_path_in" ]; then
     REPO_PATH="$_path_in"
   else
@@ -238,38 +238,15 @@ Sometimes GitHub needs a moment - re-run in 10s:  repo status"
   [ -n "$BRANCH" ] || BRANCH="$GH_DEFAULT_BRANCH"
 
   # ---- 5/7 clone -------------------------------------------------------------
-  step "5/7  Cloning your private repository"
+  step "5/6  Cloning your private repository"
   clone_project "$CLONE_URL" "$REPO_PATH" "$BRANCH"
 
-  # ---- 6/7 update mode -------------------------------------------------------
+  # ---- 6/6 cPanel registration ----------------------------------------------
   DEPLOY_LOG="$DEPLOY_STATE_DIR/$SLUG/deploy.log"
   LOCK_FILE="$DEPLOY_STATE_DIR/$SLUG/deploy.lock"
   ensure_state_dir
-  step "6/7  How should updates arrive after you git push?"
   WEBHOOK_SECRET=""; WEBHOOK_PHP=""; CRON_SH=""; INI_FILE=""
-  case "$REPO_PATH" in "$HOME/public_html"|"$HOME/public_html"/*) _in_webroot=1 ;; esac
-  if [ "$_in_webroot" = "1" ]; then
-    if confirm "Install webhook AUTO-DEPLOY? (every git push updates the live site in seconds)" "y"; then
-      if webhook_install; then
-        _mode="webhook"
-      else
-        warn "Webhook install failed - falling back."
-      fi
-    fi
-  else
-    warn "Repo is outside ~/public_html, so a webhook cannot reach it. Use cron or manual mode."
-  fi
-  if [ "$_mode" = "manual" ] && confirm "Install a CRON auto-pull? (checks GitHub every 5 minutes via cPanel -> Cron Jobs)" "y"; then
-    cron_install && _mode="cron"
-  fi
-  case "$_mode" in
-    webhook) ok "Auto-update on push: WEBHOOK (push = live)" ;;
-    cron)    ok "Auto-update: CRON every 5 minutes" ;;
-    *)       info "Manual mode chosen: run 'repo deploy' whenever you want to publish." ;;
-  esac
-
-  # ---- 7/7 cPanel registration ----------------------------------------------
-  step "7/7  Registering with cPanel -> Git Version Control"
+  step "6/6  Registering with cPanel -> Git Version Control"
   CPANEL_REG=0
   if detect_uapi; then
     info "Calling: uapi VersionControl create ..."
@@ -302,14 +279,14 @@ Sometimes GitHub needs a moment - re-run in 10s:  repo status"
   fi
   save_conf "$SLUG"
   install_self_to_bin
-  print_summary "$_mode" "$CPANEL_REG"
+  print_summary "$CPANEL_REG"
 }
 
 # ----------------------------------------------------------------------------
 # summary card (end of repo start)
 # ----------------------------------------------------------------------------
 print_summary() {
-  local _mode="$1" _cpreg="$2" _domain _whname
+  local _cpreg="$1"
   echo
   step "Setup complete - summary"
   print_row "Project" "$SLUG ($OWNER/$REPO)"
@@ -331,36 +308,13 @@ print_summary() {
   else
     print_row "cPanel Git" "not registered (manual steps above)"
   fi
-  case "$_mode" in
-    webhook)
-      _domain=$(detect_main_domain 2>/dev/null)
-      [ -n "$_domain" ] || _domain="YOUR-DOMAIN"
-      _whname=$(basename "$WEBHOOK_PHP")
-      print_row "Auto-update" "webhook: every git push = live site"
-      print_row "Deploy log" "$DEPLOY_LOG"
-      echo
-      info "LAST STEP - add the webhook in GitHub (2 values to copy):"
-      dim "  $OWNER/$REPO -> Settings -> Webhooks -> Add webhook"
-      dim "    Payload URL  : https://$_domain/$_whname"
-      dim "    Content type : application/json"
-      dim "    Secret       : $WEBHOOK_SECRET"
-      dim "    (keep the default trigger: 'Just the push event')"
-      ;;
-    cron)
-      print_row "Auto-update" "cron - add this line in cPanel -> Cron Jobs -> New Cron Job:"
-      dim "  */5 * * * * $CRON_SH >/dev/null 2>&1"
-      print_row "Deploy log" "$DEPLOY_LOG"
-      ;;
-    *)
-      print_row "Auto-update" "manual - publish anytime with:  repo deploy"
-      print_row "Deploy log" "$DEPLOY_LOG"
-      ;;
-  esac
+  print_row "Updates" "cPanel -> Git Version Control -> 'Update from Remote'"
+  dim "  (or publish instantly from Terminal:  repo deploy)"
+  print_row "Deploy log" "$DEPLOY_LOG"
   echo
   hr
   warn "You can DELETE the GitHub token now - it was never saved on this server."
   ok "Check the connection anytime:   repo status"
-  ok "Publish manually anytime:       repo deploy"
   echo
 }
 
@@ -393,12 +347,11 @@ cmd_status() {
   fi
   ok "HEAD: $(git_in_project log -1 --oneline 2>/dev/null)"
   if [ -n "$WEBHOOK_PHP" ] && [ -f "$WEBHOOK_PHP" ]; then
-    ok "Auto-update on push: ON ($WEBHOOK_PHP)"
-  elif [ -n "$CRON_SH" ] && [ -f "$CRON_SH" ]; then
-    ok "Auto-update: ON (cron - $CRON_SH)"
-  else
-    dim "Auto-update: manual (repo deploy)"
+    warn "Legacy webhook receiver found: $WEBHOOK_PHP (v2 no longer installs webhooks)"
+    dim "It still auto-deploys. Remove it in cPanel File Manager or via: repo uninstall"
   fi
+  info "Updates: cPanel -> Git Version Control -> 'Update from Remote'"
+  dim "(or publish instantly from Terminal:  repo deploy)"
   if [ -f "$DEPLOY_LOG" ] && [ -s "$DEPLOY_LOG" ]; then
     info "Last log entry: $(tail -n 1 "$DEPLOY_LOG")"
   fi
@@ -469,7 +422,7 @@ cmd_rollback() {
   load_current_or_die ""
   local _to="${1:-HEAD~1}"
   warn "Rolling back live files to: $_to"
-  dim "Note: the next successful push/webhook/cron deploy returns the site to latest."
+  dim "Note: the next successful deploy returns the site to latest."
   confirm "Proceed?" "n" || { dim "aborted."; return 1; }
   git_in_project reset --hard "$_to" >/dev/null 2>&1 \
     || die "Could not reset to '$_to'. Wrong ref? Try:  repo rollback origin/$BRANCH~1"
@@ -531,12 +484,10 @@ cmd_uninstall() {
   info "IMPORTANT: the repo itself is independent of this tool. cPanel Git"
   info "Version Control, GitHub and the deploy key keep working on their own —"
   info "this tool was only the installer. Below is only what the tool ADDED:"
-  info "1. webhook auto-deploy receiver (if any):  ${WEBHOOK_PHP:-none}"
-  info "2. cron auto-pull script (if any):         ${CRON_SH:-none}"
-  info "3. tool bookkeeping (project state, 'repo' command link)"
-  info "4. optionally: remove from cPanel Git Version Control (files stay)"
-  info "5. optionally: delete the SSH key + ~/.ssh/config block"
-  info "6. optionally: DELETE the cloned files at $REPO_PATH"
+  info "1. optionally: remove from cPanel Git Version Control (files stay)"
+  info "2. optionally: delete the SSH key + ~/.ssh/config block"
+  info "3. optionally: DELETE the cloned files at $REPO_PATH"
+  info "4. tool bookkeeping (project state, 'repo' command link)"
   echo
   dim "GitHub side is NOT automatic here: remove the deploy key manually at"
   dim "github.com/$OWNER/$REPO -> Settings -> Deploy keys -> remove the key"
@@ -544,22 +495,20 @@ cmd_uninstall() {
   echo
   confirm "Start uninstall?" "n" || { dim "aborted."; return 1; }
 
-  local _keep_webhook=0
+  local _keep_legacy_webhook=0
   if [ -n "$WEBHOOK_PHP" ] && [ -f "$WEBHOOK_PHP" ]; then
-    if confirm "Remove the webhook auto-deploy receiver? (site keeps working; pushes just stop auto-deploying)" "y"; then
-      rm -f "$WEBHOOK_PHP" && ok "Removed webhook receiver: $WEBHOOK_PHP"
+    if confirm "Remove the OLD webhook receiver found at $WEBHOOK_PHP? (recommended - v2 is cPanel-native and no longer installs webhooks)" "y"; then
+      rm -f "$WEBHOOK_PHP" && ok "Removed: $WEBHOOK_PHP"
     else
-      _keep_webhook=1
-      ok "Webhook kept - git push keeps auto-deploying."
+      _keep_legacy_webhook=1
+      warn "Kept $WEBHOOK_PHP - it will keep auto-deploying until you remove it."
     fi
   fi
   if [ -n "$CRON_SH" ] && [ -f "$CRON_SH" ]; then
-    if confirm "Remove the cron auto-pull script? (also remove its line in cPanel -> Cron Jobs)" "y"; then
+    if confirm "Remove the OLD cron pull script $CRON_SH? (also remove its line in cPanel -> Cron Jobs)" "y"; then
       rm -f "$CRON_SH" && ok "Removed cron script: $CRON_SH"
-      warn "Remove its line in cPanel -> Cron Jobs if you added one:"
-      dim "  */5 * * * * $CRON_SH >/dev/null 2>&1"
     else
-      ok "Cron pull kept - the script is self-contained and keeps working."
+      warn "Kept $CRON_SH - its cPanel -> Cron Jobs line stays active."
     fi
   fi
   if detect_uapi && confirm "Remove from cPanel Git Version Control? (your files are NOT deleted)" "y"; then
@@ -599,8 +548,8 @@ cmd_uninstall() {
     dim "Removed the 'repo' command link (~/bin/repo)."
     dim "To also delete this tool's own folder:  rm -rf $REPO_TOOL_DIR"
   fi
-  if [ "$_keep_webhook" = "1" ]; then
-    dim "Kept $DEPLOY_STATE_DIR/$SLUG/ (webhook config + log) - the kept webhook needs it."
+  if [ "$_keep_legacy_webhook" = "1" ]; then
+    dim "Kept $DEPLOY_STATE_DIR/$SLUG/ (old webhook config + log) - the kept webhook needs it."
   else
     rm -rf "$DEPLOY_STATE_DIR/$SLUG"
   fi
@@ -641,16 +590,6 @@ cmd_selftest() {
   ]}'
   t "ssh key parser count" "3" "$(parse_ssh_keys_from_json | wc -l | tr -d ' ')"
 
-  _tmp=$(mktemp -d)
-  sed "s|{{CONF_FILE}}|/home/x/.cpanel-deploy/t/deploy.ini|g" \
-      "$REPO_TOOL_DIR/templates/deploy.php.tpl" > "$_tmp/d.php"
-  grep -q '/home/x/.cpanel-deploy/t/deploy.ini' "$_tmp/d.php"
-  t "deploy.php template render" "0" "$?"
-  if command -v php >/dev/null 2>&1; then
-    php -l "$_tmp/d.php" >/dev/null 2>&1
-    t "php -l deploy.php" "0" "$?"
-  fi
-
   _oldcur=$(current_slug)
   SLUG="t" OWNER="o" REPO="r" BRANCH="main" REPO_PATH="/tmp/pp" CLONE_URL="git@a:r.git" \
   SSH_ALIAS="github-t" SSH_KEY="/k" WEBHOOK_SECRET="s3cret" WEBHOOK_PHP="/d.php" \
@@ -685,7 +624,6 @@ cmd_selftest() {
     rm -f "$DEPLOY_STATE_DIR/current"
   fi
   rm -f "$(conf_path_for_slug t)"
-  rm -rf "$_tmp"
 
   echo
   if [ "$_fail" = "0" ]; then
