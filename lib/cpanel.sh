@@ -73,3 +73,90 @@ detect_main_domain() {
     | grep -o '"main_domain": *"[^"]*"' | head -n 1 \
     | sed 's/.*: *"//; s/"$//'
 }
+
+# ============================================================================
+#  SSH key visibility in cPanel -> SSH Access -> Manage SSH Keys
+#
+#  The modern UAPI has no key-management functions; cPanel's official docs
+#  point to cPanel API 2: SSH::genkey (create through cPanel so the key is
+#  natively managed + listed) and SSH::importkey (register an existing key's
+#  contents). Both are callable from Terminal via the shipped `cpapi2` CLI.
+# ============================================================================
+
+CPAPI2_BIN=""
+
+detect_cpapi2() {
+  if command -v cpapi2 >/dev/null 2>&1; then
+    CPAPI2_BIN="cpapi2"
+  elif [ -x "/usr/local/cpanel/bin/cpapi2" ]; then
+    CPAPI2_BIN="/usr/local/cpanel/bin/cpapi2"
+  else
+    return 1
+  fi
+  return 0
+}
+
+# cpapi2_call MODULE FUNC PARAMS... -> sets API2_OUT
+cpapi2_call() {
+  local _m="$1" _f="$2" _u
+  shift 2
+  _u=$(whoami 2>/dev/null || printf '%s' "${USER:-root}")
+  API2_OUT=$("$CPAPI2_BIN" --user="$_u" "$_m" "$_f" "$@" 2>&1)
+}
+
+# api2_failed OUTPUT — 0 when the API2 JSON reports result: 0
+api2_failed() {
+  printf '%s' "$1" | grep -Eq '"result"[ ]*:[ ]*0' && return 0
+  return 1
+}
+
+# uri_encode VALUE — URI-encode (cpapi2 CLI requires it); perl first, pure-od fallback
+uri_encode() {
+  perl -MURI::Escape -e 'print uri_escape($ARGV[0])' "$1" 2>/dev/null && return 0
+  printf '%s' "$1" | od -An -tx1 | tr ' ' '\n' | grep -v '^$' \
+    | sed 's/^/%/' | tr -d '\n'
+}
+
+# cpanel_genkey NAME — create ~/.ssh/NAME(.pub) THROUGH cPanel (rsa-4096),
+# so the key pair is natively listed in cPanel -> SSH Access -> Manage SSH Keys.
+cpanel_genkey() {
+  local _name="$1"
+  if [ "${DRY_RUN:-0}" = "1" ]; then
+    dim "[dry-run] $CPAPI2_BIN SSH genkey bits=4096 name=$_name type=rsa"
+    return 0
+  fi
+  ensure_ssh_dir
+  cpapi2_call SSH genkey "bits=4096" "name=$_name" "type=rsa" || return 1
+  if api2_failed "$API2_OUT"; then return 1; fi
+  # trust but verify: the key files must actually exist now
+  [ -f "$HOME/.ssh/$_name" ] && [ -f "$HOME/.ssh/$_name.pub" ]
+}
+
+# cpanel_key_visible NAME — 0 when cPanel's key system lists NAME
+cpanel_key_visible() {
+  local _name="$1"
+  if [ "${DRY_RUN:-0}" = "1" ]; then
+    dim "[dry-run] verify key listing for $_name"
+    return 0
+  fi
+  cpapi2_call SSH listkeys "keys=$_name" || return 1
+  if api2_failed "$API2_OUT"; then return 1; fi
+  printf '%s' "$API2_OUT" | grep -qF "$_name"
+}
+
+# cpanel_import_public_key NAME PUBFILE — register an existing PUBLIC key's
+# contents under NAME so it shows in cPanel's key list. Uses a DISTINCT name:
+# importkey overwrites same-named keys, so never pass the private key's name.
+cpanel_import_public_key() {
+  local _name="$1" _pubfile="$2" _enc
+  if [ "${DRY_RUN:-0}" = "1" ]; then
+    dim "[dry-run] $CPAPI2_BIN SSH importkey (public half, name=$_name)"
+    return 0
+  fi
+  ensure_ssh_dir
+  _enc=$(uri_encode "$(cat "$_pubfile")") || return 1
+  [ -n "$_enc" ] || return 1
+  cpapi2_call SSH importkey "key=$_enc" "name=$_name" || return 1
+  if api2_failed "$API2_OUT"; then return 1; fi
+  cpanel_key_visible "$_name"
+}

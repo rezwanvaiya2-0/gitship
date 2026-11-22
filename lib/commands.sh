@@ -54,6 +54,11 @@ cron+zipball fallback described in README.md."
   else
     warn "uapi not found — is this really a cPanel session? Registration will be guided manually."
   fi
+  if detect_cpapi2; then
+    ok "cPanel cpapi2: found — the deploy key will be created through cPanel (visible in SSH Access)"
+  else
+    dim "cpapi2 not found — key will be generated locally (fully functional, just not listed in cPanel's UI)"
+  fi
   if [ -n "${CPANEL_DEPLOY_TOKEN:-}" ]; then
     GIT_TOKEN="$CPANEL_DEPLOY_TOKEN"
     ok "GitHub token provided via CPANEL_DEPLOY_TOKEN environment variable"
@@ -99,9 +104,28 @@ Manual path: finish setup, then run 'repo key' for copy-paste instructions."
 
   # ---- 3/7 SSH deploy key ----------------------------------------------------
   step "3/7  SSH deploy key (automatic - replaces the whole manual SSH dance)"
-  SSH_KEY="$HOME/.ssh/id_ed25519_$SLUG"
   SSH_ALIAS="github-$SLUG"
-  run_wrap "generate SSH key $SSH_KEY" gen_deploy_key "$SSH_KEY"
+  KEYNAME="cpanel_deploy_$SLUG"
+  SSH_KEY="$HOME/.ssh/$KEYNAME"
+  KEY_VISIBLE=0
+  if [ -f "$SSH_KEY" ] && [ -f "$SSH_KEY.pub" ]; then
+    ok "SSH key already exists: $SSH_KEY (reusing it)"
+    KEY_ALG="existing"
+    detect_cpapi2 && cpanel_key_visible "$KEYNAME" && KEY_VISIBLE=1
+  elif detect_cpapi2 && [ "$DRY_RUN" != "1" ]; then
+    info "Creating the key THROUGH cPanel so it shows in cPanel -> SSH Access -> Manage SSH Keys..."
+    if cpanel_genkey "$KEYNAME"; then
+      KEY_ALG="rsa-4096 (created by cPanel)"
+      KEY_VISIBLE=1
+      ok "SSH key created: $SSH_KEY"
+    else
+      warn "cPanel key creation failed — falling back to local generation."
+      dim "$(printf '%s' "${API2_OUT:-}" | head -c 300)"
+      gen_deploy_key "$SSH_KEY"
+    fi
+  else
+    run_wrap "generate SSH key $SSH_KEY" gen_deploy_key "$SSH_KEY"
+  fi
   run_wrap "write ~/.ssh/config block (Host $SSH_ALIAS)" \
            write_ssh_config_block "$SSH_ALIAS" "$SSH_KEY" "$SLUG"
   run_wrap "pre-trust github.com in known_hosts" seed_known_hosts
@@ -120,6 +144,17 @@ Manual path: run 'repo key' - it prints the key + exact GitHub steps."
       die "SSH connection test FAILED even though the key was added.
 GitHub said: $SSH_TEST_OUT
 Sometimes GitHub needs a moment - re-run in 10s:  repo status"
+    fi
+    if [ "$KEY_VISIBLE" = "1" ] && detect_cpapi2; then
+      if cpanel_key_visible "$KEYNAME"; then
+        ok "Confirmed: the key is listed in cPanel -> SSH Access -> Manage SSH Keys"
+        dim "Its status will show 'not authorized' - that is NORMAL for deploy keys."
+        dim "Authorization only applies to people logging IN to this server;"
+        dim "our key is used for outgoing connections to GitHub."
+      else
+        warn "Could not confirm the key's listing in cPanel's key system."
+        dim "The key still works normally - visibility is cosmetic."
+      fi
     fi
   fi
 
@@ -222,6 +257,15 @@ print_summary() {
   print_row "Branch" "$BRANCH"
   print_row "Server path" "$REPO_PATH"
   print_row "Deploy key" "$SSH_KEY (read-only, this repo only)"
+  case "$(basename "$SSH_KEY")" in
+    cpanel_deploy_*)
+      print_row "cPanel SSH UI" "visible: cPanel -> Security -> SSH Access -> Manage SSH Keys"
+      dim "  ('not authorized' status is normal - deploy keys only connect OUT to GitHub)"
+      ;;
+    *)
+      print_row "cPanel SSH UI" "not listed - run 'repo key' to register it for visibility"
+      ;;
+  esac
   if [ "$_cpreg" = "1" ]; then
     print_row "cPanel Git" "registered - manage it in cPanel -> Git Version Control"
   else
@@ -408,6 +452,16 @@ cmd_key() {
       warn "Deploy key was not added (see message above)."
     fi
   fi
+  if detect_cpapi2 && confirm "Register the PUBLIC half in cPanel -> SSH Access? (makes it visible under Manage SSH Keys)" "n"; then
+    if cpanel_import_public_key "cpanel_deploy_${SLUG}_pub" "$SSH_KEY.pub"; then
+      ok "Registered - it now appears in cPanel -> SSH Access -> Manage SSH Keys"
+      dim "Note: 'not authorized' status is NORMAL - authorization only applies to"
+      dim "incoming logins. Deploy keys are used for outgoing GitHub connections."
+    else
+      warn "Could not register it in cPanel's key system (the key still works)."
+      dim "$(printf '%s' "${API2_OUT:-}" | head -c 300)"
+    fi
+  fi
 }
 
 cmd_uninstall() {
@@ -516,6 +570,17 @@ cmd_selftest() {
   t "uapi failure detect (status 0)"     "0" "$?"
   uapi_output_failed '{"status" : 1, "errors" : null}'
   t "uapi success detect"                "1" "$?"
+
+  api2_failed '{"cpanelresult":{"event":{"result":1},"data":[{"name":"k"}]}}'
+  t "api2 success detect" "1" "$?"
+  api2_failed '{"cpanelresult":{"event":{"result":0},"data":[{"reason":"boom"}]}}'
+  t "api2 failure detect" "0" "$?"
+  _enc=$(uri_encode 'a b')
+  if printf '%s' "$_enc" | grep -q ' '; then
+    err "uri_encode leaves raw spaces"; _fail=1
+  else
+    ok "uri_encode has no raw spaces"
+  fi
   if [ -n "$_oldcur" ]; then
     printf '%s' "$_oldcur" > "$DEPLOY_STATE_DIR/current"
   else

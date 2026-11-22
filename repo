@@ -22,7 +22,7 @@
 #     8. registers the repo in cPanel -> Git Version Control via uapi
 # ============================================================================
 
-VERSION="1.1.0"
+VERSION="1.2.0"
 
 # Resolve the real location of this script (works through the ~/bin/repo symlink)
 SOURCE="${BASH_SOURCE[0]}"
