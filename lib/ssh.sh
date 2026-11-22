@@ -92,6 +92,47 @@ remove_ssh_config_block() {
     && rm -f "$_cfg.bak"
 }
 
+# write_github_com_block KEYPATH SLUG — managed "Host github.com" block so the
+# remote URL can be the clean, tool-independent git@github.com:owner/repo.git.
+# Returns 2 when an unmanaged "Host github.com" entry already exists (caller
+# falls back to a per-project alias; we never override existing user config).
+write_github_com_block() {
+  ensure_ssh_dir
+  local _cfg="$HOME/.ssh/config" _keypath="$1" _slug="$2"
+  [ -f "$_cfg" ] || : > "$_cfg"
+  chmod 600 "$_cfg" 2>/dev/null
+  if grep -q "# cpanel-deploy:begin github.com ($_slug)" "$_cfg" 2>/dev/null; then
+    ok "SSH config block for github.com already present ($_slug)"
+    return 0
+  fi
+  if grep -Eq '^Host[ ]+github\.com([ ]|$)' "$_cfg" 2>/dev/null; then
+    return 2
+  fi
+  {
+    printf '\n# cpanel-deploy:begin github.com (%s)\n' "$_slug"
+    printf 'Host github.com\n'
+    printf '    User git\n'
+    printf '    IdentityFile %s\n' "$_keypath"
+    printf '    IdentitiesOnly yes\n'
+    printf '# cpanel-deploy:end github.com (%s)\n' "$_slug"
+  } >> "$_cfg"
+  ok "SSH config updated (Host github.com -> this project's deploy key)"
+}
+
+# parse_host_from_scp_url URL -> HOST_FROM_URL (host part of git@HOST:path)
+parse_host_from_scp_url() {
+  local _u="${1#git@}"
+  HOST_FROM_URL="${_u%%:*}"
+  [ -n "$HOST_FROM_URL" ] || return 1
+  return 0
+}
+
+# ssh_auth_test_for_url CLONE_URL — auth-test against the URL's actual SSH host
+ssh_auth_test_for_url() {
+  parse_host_from_scp_url "$1" || return 1
+  ssh_auth_test "$HOST_FROM_URL"
+}
+
 # ssh_auth_test HOST-ALIAS -> returns 0 when GitHub accepts our deploy key.
 # NOTE: `ssh -T git@github.com` exits 1 ON SUCCESS ("...successfully
 # authenticated"), so we detect success by output text, not exit code.

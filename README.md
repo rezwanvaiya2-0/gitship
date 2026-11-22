@@ -127,6 +127,25 @@ keeps the tree clean so the *Update from Remote* button never hits its
 
 ---
 
+## The tool is only the installer — your repo stays independent
+
+After `repo start` finishes, your repo is a **completely normal cPanel-managed
+Git repository**. Everything keeps working whether or not this tool remains:
+
+- cPanel → Git Version Control manages it natively (history, branches, Update
+  from Remote) — registered through cPanel's own UAPI
+- The remote URL is the clean, standard `git@github.com:owner/repo.git` for
+  your first project (a per-project SSH alias is used automatically when you
+  add a second project, since GitHub deploy keys are repo-scoped)
+- The SSH deploy key lives in `~/.ssh/` and works with or without this tool
+- The webhook receiver (`deploy-*.php`) and the cron pull script are
+  **self-contained** — they read their own config and never call the tool
+- `repo uninstall` asks before removing each piece: keep the webhook or cron
+  and they keep working; remove everything and only then does auto-deploy stop.
+  Site files are only deleted after a double confirmation.
+
+---
+
 ## Security notes
 
 - The GitHub token is read with hidden input, used for 2 API calls, **never

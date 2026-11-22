@@ -16,6 +16,42 @@ run_wrap() {
 }
 
 # ----------------------------------------------------------------------------
+# migrate_github_com_block_to_alias — when a 2nd project needs its own key,
+# convert the first project's shared "Host github.com" block into a dedicated
+# per-project alias (deploy keys are repo-scoped). Every project keeps
+# pointing at its own key, and nothing depends on this tool existing.
+# ----------------------------------------------------------------------------
+migrate_github_com_block_to_alias() {
+  local _cfg="$HOME/.ssh/config" _marker _oldslug _oldkey
+  [ -f "$_cfg" ] || return 0
+  _marker=$(grep -o '# cpanel-deploy:begin github.com ([^)]*)' "$_cfg" | head -n 1)
+  [ -n "$_marker" ] || return 0
+  _oldslug=$(printf '%s' "$_marker" | sed 's/.*github.com (//; s/)$//')
+  if [ "$_oldslug" = "$SLUG" ]; then
+    return 0
+  fi
+  _oldkey=$(sed -n "/# cpanel-deploy:begin github.com ($_oldslug)/,/# cpanel-deploy:end github.com ($_oldslug)/p" "$_cfg" \
+            | grep '^    IdentityFile' | head -n 1 | awk '{print $2}')
+  [ -n "$_oldkey" ] || { warn "Found a cpanel-deploy github.com block without an IdentityFile — check ~/.ssh/config"; return 1; }
+  sed -i.bak "/# cpanel-deploy:begin github.com ($_oldslug)/,/# cpanel-deploy:end github.com ($_oldslug)/d" "$_cfg" \
+    && rm -f "$_cfg.bak"
+  write_ssh_config_block "github-$_oldslug" "$_oldkey" "$_oldslug" || return 1
+  if [ -f "$DEPLOY_STATE_DIR/$_oldslug.conf" ]; then
+    (
+      . "$DEPLOY_STATE_DIR/$_oldslug.conf" 2>/dev/null
+      _u="git@github-$_oldslug:$OWNER/$REPO.git"
+      sed -i.bak "s|^CLONE_URL=.*|CLONE_URL=\"$_u\"|" "$DEPLOY_STATE_DIR/$_oldslug.conf" 2>/dev/null \
+        && rm -f "$DEPLOY_STATE_DIR/$_oldslug.conf.bak"
+      if [ -d "$REPO_PATH/.git" ]; then
+        git --git-dir="$REPO_PATH/.git" remote set-url origin "$_u" 2>/dev/null
+      fi
+    )
+    ok "Migrated earlier project '$_oldslug' to its own SSH alias — both projects stay independent"
+  fi
+  return 0
+}
+
+# ----------------------------------------------------------------------------
 # repo start — the full wizard
 # ----------------------------------------------------------------------------
 cmd_start() {
@@ -126,8 +162,32 @@ Manual path: finish setup, then run 'repo key' for copy-paste instructions."
   else
     run_wrap "generate SSH key $SSH_KEY" gen_deploy_key "$SSH_KEY"
   fi
-  run_wrap "write ~/.ssh/config block (Host $SSH_ALIAS)" \
-           write_ssh_config_block "$SSH_ALIAS" "$SSH_KEY" "$SLUG"
+  # Expose the SSH identity the most tool-independent way:
+  #   1st/only project -> managed "Host github.com" block + clean
+  #                       git@github.com:owner/repo.git URL (cPanel sees a
+  #                       normal URL; nothing references this tool)
+  #   2nd+ project     -> per-project alias (deploy keys are repo-scoped)
+  if [ "$DRY_RUN" = "1" ]; then
+    dim "[dry-run] choose SSH config strategy (github.com block vs per-project alias)"
+    USE_GITHUB_COM=1
+    CLONE_URL="git@github.com:$OWNER/$REPO.git"
+  else
+    if grep -q '# cpanel-deploy:begin github.com (' "$HOME/.ssh/config" 2>/dev/null; then
+      migrate_github_com_block_to_alias || warn "Check ~/.ssh/config — the earlier project's block may need attention."
+    fi
+    USE_GITHUB_COM=0
+    write_github_com_block "$SSH_KEY" "$SLUG"
+    case $? in
+      0) USE_GITHUB_COM=1 ;;
+      2) info "An existing 'Host github.com' SSH entry found — using a dedicated alias so nothing of yours is overridden."
+         write_ssh_config_block "$SSH_ALIAS" "$SSH_KEY" "$SLUG" ;;
+    esac
+    if [ "$USE_GITHUB_COM" = "1" ]; then
+      CLONE_URL="git@github.com:$OWNER/$REPO.git"
+    else
+      CLONE_URL="git@$SSH_ALIAS:$OWNER/$REPO.git"
+    fi
+  fi
   run_wrap "pre-trust github.com in known_hosts" seed_known_hosts
   if [ "$DRY_RUN" != "1" ]; then
     PUBKEY=$(cat "$SSH_KEY.pub" 2>/dev/null) || die "Deploy key public file missing: $SSH_KEY.pub"
@@ -138,7 +198,7 @@ Manual path: finish setup, then run 'repo key' for copy-paste instructions."
 Manual path: run 'repo key' - it prints the key + exact GitHub steps."
     ok "Deploy key added to GitHub (read-only, this repo only)"
     info "Testing the GitHub <-> server SSH connection..."
-    if ssh_auth_test "$SSH_ALIAS"; then
+    if ssh_auth_test_for_url "$CLONE_URL"; then
       ok "GitHub accepts this server's key: $(printf '%s' "$SSH_TEST_OUT" | head -n 1)"
     else
       die "SSH connection test FAILED even though the key was added.
@@ -179,7 +239,6 @@ Sometimes GitHub needs a moment - re-run in 10s:  repo status"
 
   # ---- 5/7 clone -------------------------------------------------------------
   step "5/7  Cloning your private repository"
-  CLONE_URL="git@$SSH_ALIAS:$OWNER/$REPO.git"
   clone_project "$CLONE_URL" "$REPO_PATH" "$BRANCH"
 
   # ---- 6/7 update mode -------------------------------------------------------
@@ -255,6 +314,7 @@ print_summary() {
   step "Setup complete - summary"
   print_row "Project" "$SLUG ($OWNER/$REPO)"
   print_row "Branch" "$BRANCH"
+  print_row "Remote URL" "$CLONE_URL"
   print_row "Server path" "$REPO_PATH"
   print_row "Deploy key" "$SSH_KEY (read-only, this repo only)"
   case "$(basename "$SSH_KEY")" in
@@ -311,7 +371,7 @@ cmd_status() {
   load_current_or_die "$1"
   printf '\n%srepo status%s — %s/%s (branch: %s)\n' "$C_TITLE" "$C_RESET" "$OWNER" "$REPO" "$BRANCH"
   hr
-  if [ -f "$SSH_KEY" ] && ssh_auth_test "$SSH_ALIAS"; then
+  if [ -f "$SSH_KEY" ] && ssh_auth_test_for_url "$CLONE_URL"; then
     ok "GitHub SSH connection: OK"
   else
     err "GitHub SSH connection: FAILED"
@@ -443,7 +503,7 @@ cmd_key() {
     if add_deploy_key "$OWNER" "$REPO" "$(cat "$SSH_KEY.pub")" \
          "cpanel-deploy $HOSTN $(date +%Y-%m-%d)"; then
       ok "Deploy key added. Testing connection..."
-      if ssh_auth_test "$SSH_ALIAS"; then
+      if ssh_auth_test_for_url "$CLONE_URL"; then
         ok "Connection OK - $(printf '%s' "$SSH_TEST_OUT" | head -n 1)"
       else
         warn "Key added but SSH test failed. Wait 10s, then: repo status"
@@ -468,9 +528,12 @@ cmd_uninstall() {
   load_current_or_die "$1"
   echo
   warn "Uninstall plan for project '$SLUG':"
-  info "1. remove webhook receiver (if any):  ${WEBHOOK_PHP:-none}"
-  info "2. remove cron script (if any):       ${CRON_SH:-none}"
-  info "3. remove tool state:                 $DEPLOY_STATE_DIR/$SLUG*"
+  info "IMPORTANT: the repo itself is independent of this tool. cPanel Git"
+  info "Version Control, GitHub and the deploy key keep working on their own —"
+  info "this tool was only the installer. Below is only what the tool ADDED:"
+  info "1. webhook auto-deploy receiver (if any):  ${WEBHOOK_PHP:-none}"
+  info "2. cron auto-pull script (if any):         ${CRON_SH:-none}"
+  info "3. tool bookkeeping (project state, 'repo' command link)"
   info "4. optionally: remove from cPanel Git Version Control (files stay)"
   info "5. optionally: delete the SSH key + ~/.ssh/config block"
   info "6. optionally: DELETE the cloned files at $REPO_PATH"
@@ -480,13 +543,23 @@ cmd_uninstall() {
   echo
   confirm "Start uninstall?" "n" || { dim "aborted."; return 1; }
 
+  local _keep_webhook=0
   if [ -n "$WEBHOOK_PHP" ] && [ -f "$WEBHOOK_PHP" ]; then
-    rm -f "$WEBHOOK_PHP" && ok "Removed webhook receiver: $WEBHOOK_PHP"
+    if confirm "Remove the webhook auto-deploy receiver? (site keeps working; pushes just stop auto-deploying)" "y"; then
+      rm -f "$WEBHOOK_PHP" && ok "Removed webhook receiver: $WEBHOOK_PHP"
+    else
+      _keep_webhook=1
+      ok "Webhook kept - git push keeps auto-deploying."
+    fi
   fi
   if [ -n "$CRON_SH" ] && [ -f "$CRON_SH" ]; then
-    rm -f "$CRON_SH" && ok "Removed cron script: $CRON_SH"
-    warn "Also remove its line in cPanel -> Cron Jobs (elsewise harmless, but clean it):"
-    dim "  */5 * * * * $CRON_SH >/dev/null 2>&1"
+    if confirm "Remove the cron auto-pull script? (also remove its line in cPanel -> Cron Jobs)" "y"; then
+      rm -f "$CRON_SH" && ok "Removed cron script: $CRON_SH"
+      warn "Remove its line in cPanel -> Cron Jobs if you added one:"
+      dim "  */5 * * * * $CRON_SH >/dev/null 2>&1"
+    else
+      ok "Cron pull kept - the script is self-contained and keeps working."
+    fi
   fi
   if detect_uapi && confirm "Remove from cPanel Git Version Control? (your files are NOT deleted)" "y"; then
     if cpanel_remove_repo "$REPO_PATH" "$REPO"; then
@@ -497,18 +570,40 @@ cmd_uninstall() {
   fi
   if confirm "Delete the SSH deploy key + ssh config block for this project?" "n"; then
     rm -f "$SSH_KEY" "$SSH_KEY.pub"
-    remove_ssh_config_block "$SLUG"
+    if grep -q "# cpanel-deploy:begin github.com ($SLUG)" "$HOME/.ssh/config" 2>/dev/null; then
+      remove_ssh_config_block "github.com ($SLUG)"
+    else
+      remove_ssh_config_block "$SLUG"
+    fi
     ok "SSH key + config block removed."
+    warn "Without this key, cPanel's 'Update from Remote' button has no GitHub access."
   fi
   if confirm "DELETE the cloned files at $REPO_PATH? (CANNOT BE UNDONE)" "n"; then
     if confirm "Last check - really delete ALL files in $REPO_PATH?" "n"; then
       rm -rf "$REPO_PATH" && ok "Deleted: $REPO_PATH"
     fi
   fi
-  rm -rf "$DEPLOY_STATE_DIR/$SLUG"
+  # tool bookkeeping only — never breaks the running site
+  local _others
+  _others=$(ls "$DEPLOY_STATE_DIR"/*.conf 2>/dev/null | grep -v "/$SLUG.conf" | head -n 1)
   rm -f "$(conf_path_for_slug "$SLUG")"
-  : > "$DEPLOY_STATE_DIR/current" 2>/dev/null
-  ok "Project '$SLUG' uninstalled."
+  if [ -n "$_others" ]; then
+    dim "Kept the 'repo' command — other project(s) still use this tool."
+    if [ "$(current_slug)" = "$SLUG" ]; then
+      : > "$DEPLOY_STATE_DIR/current" 2>/dev/null
+    fi
+  else
+    rm -f "$HOME/bin/repo" 2>/dev/null
+    rm -f "$DEPLOY_STATE_DIR/current" 2>/dev/null
+    dim "Removed the 'repo' command link (~/bin/repo)."
+    dim "To also delete this tool's own folder:  rm -rf $REPO_TOOL_DIR"
+  fi
+  if [ "$_keep_webhook" = "1" ]; then
+    dim "Kept $DEPLOY_STATE_DIR/$SLUG/ (webhook config + log) - the kept webhook needs it."
+  else
+    rm -rf "$DEPLOY_STATE_DIR/$SLUG"
+  fi
+  ok "Project '$SLUG' uninstalled. A kept cPanel Git repo keeps working fully on its own."
 }
 
 # ----------------------------------------------------------------------------
@@ -525,6 +620,8 @@ cmd_selftest() {
   parse_owner_repo "https://github.com/foo/bar.git";   t "parse https + .git"     "foo|bar" "$OWNER|$REPO"
   parse_owner_repo "ssh://git@github.com/foo/bar.git"; t "parse ssh://"           "foo|bar" "$OWNER|$REPO"
   parse_owner_repo "foo/bar";                          t "parse owner/repo"       "foo|bar" "$OWNER|$REPO"
+  parse_host_from_scp_url "git@github.com:foo/bar.git";    t "parse host github.com" "github.com"    "$HOST_FROM_URL"
+  parse_host_from_scp_url "git@github-my-app:foo/bar.git"; t "parse host alias"     "github-my-app" "$HOST_FROM_URL"
   if parse_owner_repo "https://gitlab.com/foo/bar" 2>/dev/null; then
     err "non-github URL should be rejected"; _fail=1
   else
